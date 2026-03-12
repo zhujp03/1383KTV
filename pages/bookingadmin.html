@@ -193,7 +193,8 @@
         if(!user || !pass) return alert('Please enter username and password');
 
         try {
-            const res = await fetch('http://localhost:3000/api/admin/login', {
+            // const res = await fetch('http://localhost:3000/api/admin/login', {
+            const res = await fetch('/api/admin/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username: user, password: pass })
@@ -251,7 +252,8 @@
         tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading...</td></tr>';
 
         try {
-            const res = await fetch('http://localhost:3000/api/admin/bookings', { headers: getAuthHeaders() });
+            // const res = await fetch('http://localhost:3000/api/admin/bookings', { headers: getAuthHeaders() });
+            const res = await fetch('/api/admin/bookings', { headers: getAuthHeaders() });
             if(res.status === 401) return handleLogout(); // 凭证失效被踢出
 
             const result = await res.json();
@@ -293,11 +295,12 @@
         if(!confirm(`Are you sure you want to delete Booking #${id}? This action cannot be undone.`)) return;
 
         try {
-            const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {
-                method: 'DELETE',
-                headers: getAuthHeaders()
-            });
+            // const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {
+            //     method: 'DELETE',
+            //     headers: getAuthHeaders()
+            // });
 
+            await fetch(`/api/admin/bookings/${id}`, { method: 'DELETE', headers: getAuthHeaders() });
             if (res.ok) {
                 loadBookings(); // 删除成功后刷新表格
             } else {
@@ -314,7 +317,8 @@
     async function loadAdmins() {
         const tbody = document.getElementById('admins-table-body');
         try {
-            const res = await fetch('http://localhost:3000/api/admin/list', { headers: getAuthHeaders() });
+            // const res = await fetch('http://localhost:3000/api/admin/list', { headers: getAuthHeaders() });、
+            const res = await fetch('/api/admin/list', { headers: getAuthHeaders() });
             if(res.status === 401) return handleLogout();
 
             const admins = await res.json();
@@ -353,12 +357,16 @@
         const newPassword = document.getElementById('new-admin-pass').value.trim();
         if(!newUsername || !newPassword) return alert('Fill all fields');
 
-        const res = await fetch('http://localhost:3000/api/admin/add', {
-            method: 'POST',
-            headers: getAuthHeaders(),
+        // const res = await fetch('http://localhost:3000/api/admin/add', {
+        //     method: 'POST',
+        //     headers: getAuthHeaders(),
+        //     body: JSON.stringify({ newUsername, newPassword })
+        // });
+
+        const res = await fetch('/api/admin/add', {
+            method: 'POST', headers: getAuthHeaders(),
             body: JSON.stringify({ newUsername, newPassword })
         });
-
         if (res.ok) {
             closeModal('add-admin-modal');
             loadAdmins(); // 刷新列表
@@ -445,10 +453,13 @@
         };
 
         try {
-            const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {
-                method: 'PUT',
-                headers: getAuthHeaders(),
-                body: JSON.stringify(updatedData)
+            // const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {
+            //     method: 'PUT',
+            //     headers: getAuthHeaders(),
+            //     body: JSON.stringify(updatedData)
+            // });
+            const res = await fetch(`/api/admin/bookings/${id}`, {
+                method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)
             });
 
             if (res.ok) {

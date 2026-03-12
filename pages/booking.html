@@ -446,11 +446,16 @@
 
         try {
             console.log("3. 正在向后端发送 POST 请求...");
-            const response = await fetch('http://localhost:3000/api/book', {
+            // const response = await fetch('http://localhost:3000/api/book', {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json'
+            //     },
+            //     body: JSON.stringify(bookingData)
+            // });
+            const response = await fetch('/api/book', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(bookingData)
             });
 
@@ -481,3 +486,4 @@
 </script>
 </body>
 </html>
+
