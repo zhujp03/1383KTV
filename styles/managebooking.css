@@ -1,0 +1,113 @@
+/* =========================================
+   基础重置与变量 (保持暗黑风格统一)
+   ========================================= */
+:root {
+    --bg-dark: #070B14;
+    --card-bg: #111827;
+    --primary-blue: #3B82F6;
+    --primary-blue-hover: #2563EB;
+    --text-main: #F9FAFB;
+    --text-muted: #9CA3AF;
+    --border-color: #1F2937;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    margin: 0;
+}
+
+/* 导航栏样式 (复用) */
+.top-nav {
+    display: flex;
+    justify-content: space-between;
+    padding: 20px 40px;
+    background-color: rgba(7, 11, 20, 0.9);
+    border-bottom: 1px solid var(--border-color);
+}
+.nav-links a { color: var(--text-muted); text-decoration: none; margin-left: 20px; transition: color 0.3s;}
+.nav-links a:hover, .nav-links a.active { color: var(--text-main); font-weight: bold; }
+
+/* 页面主容器 */
+.manage-container {
+    max-width: 600px;
+    margin: 80px auto;
+    padding: 20px;
+    text-align: center;
+}
+
+.manage-title { font-size: 2.5rem; margin-bottom: 10px; }
+.manage-subtitle { color: var(--text-muted); margin-bottom: 40px; }
+
+/* 搜索框区域 */
+.search-box {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-bottom: 40px;
+}
+
+.neon-input {
+    width: 60%;
+    padding: 15px;
+    background-color: rgba(17, 24, 39, 0.8);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 1.1rem;
+    outline: none;
+    transition: border-color 0.3s;
+}
+
+.neon-input:focus {
+    border-color: var(--primary-blue);
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
+}
+
+.btn-primary {
+    padding: 15px 30px;
+    background-color: var(--primary-blue);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    font-weight: bold;
+    transition: background-color 0.3s;
+}
+.btn-primary:hover { background-color: var(--primary-blue-hover); }
+
+/* 订单结果卡片 */
+.results-container { text-align: left; }
+
+.booking-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 20px;
+    position: relative;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+.booking-header {
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 15px;
+    margin-bottom: 15px;
+}
+
+.booking-id { color: var(--text-muted); font-size: 0.9rem; }
+.status-badge {
+    background-color: rgba(59, 130, 246, 0.2);
+    color: var(--primary-blue);
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: bold;
+}
+
+.booking-details p { margin: 10px 0; font-size: 1.1rem;}
+.booking-details strong { color: var(--primary-blue); width: 100px; display: inline-block;}

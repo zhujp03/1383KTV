@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>1383 KTV - Admin Portal</title>
+    <link rel="stylesheet" href="../styles/bookingadmin.css">
+</head>
+<body>
+
+<div id="login-view" class="login-container">
+    <div class="login-card">
+        <h2>Admin Login</h2>
+        <div class="input-group">
+            <label>Username</label>
+            <input type="text" id="login-user" class="neon-input" placeholder="Enter username">
+        </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="login-pass" class="neon-input" placeholder="Enter password">
+        </div>
+        <button class="btn-primary" onclick="handleLogin()">Login</button>
+    </div>
+</div>
+
+<div id="dashboard-view" class="dashboard-container">
+    <nav class="admin-nav">
+        <div class="logo">1383 KTV Admin</div>
+        <div class="nav-tabs">
+            <button class="tab-btn active" onclick="switchTab('bookings')">Bookings</button>
+            <button class="tab-btn" onclick="switchTab('settings')">Admin Settings</button>
+        </div>
+        <div>
+            <span id="welcome-msg" style="margin-right: 20px; color: var(--text-muted);"></span>
+            <button class="logout-btn" onclick="handleLogout()">Logout</button>
+        </div>
+    </nav>
+
+    <section id="tab-bookings" class="content-section active">
+        <div class="section-header">
+            <h2>Recent Bookings</h2>
+            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadBookings()">🔄 Refresh</button>
+        </div>
+
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Date & Time</th>
+                <th>Room</th>
+                <th>Duration</th>
+                <th>Party Size</th>
+                <th>Customer Name</th>
+                <th>Phone</th>
+                <th>Actions</th> </tr>
+            </thead>
+            <tbody id="bookings-table-body">
+            </tbody>
+        </table>
+    </section>
+
+    <section id="tab-settings" class="content-section">
+        <div class="section-header">
+            <h2>Admin Management</h2>
+            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="openAddAdminModal()">+ Add New Admin</button>
+        </div>
+
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th>ID</th>
+                <th>Username</th>
+                <th>Actions</th>
+            </tr>
+            </thead>
+            <tbody id="admins-table-body">
+            </tbody>
+        </table>
+    </section>
+</div>
+
+<div id="add-admin-modal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Add New Admin</h3>
+        <div class="input-group">
+            <label>New Username</label>
+            <input type="text" id="new-admin-user" class="neon-input">
+        </div>
+        <div class="input-group">
+            <label>Password</label>
+            <input type="password" id="new-admin-pass" class="neon-input">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-primary" style="background: transparent; border: 1px solid var(--text-muted);" onclick="closeModal('add-admin-modal')">Cancel</button>
+            <button class="btn-primary" style="width: auto;" onclick="submitNewAdmin()">Add Admin</button>
+        </div>
+    </div>
+</div>
+
+<div id="edit-pass-modal" class="modal-overlay">
+    <div class="modal-content">
+        <h3>Change Password</h3>
+        <p id="edit-pass-username" style="color: var(--text-muted); margin-bottom: 15px;"></p>
+        <input type="hidden" id="edit-admin-id">
+        <div class="input-group">
+            <label>New Password</label>
+            <input type="password" id="edit-new-pass" class="neon-input">
+        </div>
+        <div class="modal-actions">
+            <button class="btn-primary" style="background: transparent; border: 1px solid var(--text-muted);" onclick="closeModal('edit-pass-modal')">Cancel</button>
+            <button class="btn-primary" style="width: auto;" onclick="submitNewPassword()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 页面加载时检查登录状态，使用 sessionStorage
+    window.onload = () => {
+        const currentUser = sessionStorage.getItem('currentUser');
+        if (currentUser) {
+            showDashboard(currentUser);
+        }
+    };
+
+    // 获取通用的请求头 (携带我们明文验证的凭证)
+    function getAuthHeaders() {
+        return {
+            'Content-Type': 'application/json',
+            'x-admin-username': sessionStorage.getItem('currentUser')
+        };
+    }
+
+    // 1. 登录处理
+    async function handleLogin() {
+        const user = document.getElementById('login-user').value.trim();
+        const pass = document.getElementById('login-pass').value.trim();
+
+        if(!user || !pass) return alert('Please enter username and password');
+
+        try {
+            const res = await fetch('http://localhost:3000/api/admin/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, password: pass })
+            });
+
+            const data = await res.json();
+            if (res.ok) {
+                // 登录成功存入 sessionStorage
+                sessionStorage.setItem('currentUser', data.username);
+                showDashboard(data.username);
+            } else {
+                alert(data.error);
+            }
+        } catch (error) {
+            alert('Server error. Is Node.js running?');
+        }
+    }
+
+    function handleLogout() {
+        // 登出时清除 sessionStorage
+        sessionStorage.removeItem('currentUser');
+        document.getElementById('dashboard-view').style.display = 'none';
+        document.getElementById('login-view').style.display = 'flex';
+        document.getElementById('login-user').value = '';
+        document.getElementById('login-pass').value = '';
+    }
+
+    // 显示主控台，并加载初始数据
+    function showDashboard(username) {
+        document.getElementById('login-view').style.display = 'none';
+        document.getElementById('dashboard-view').style.display = 'block';
+        document.getElementById('welcome-msg').innerText = `Welcome, ${username}`;
+        loadBookings(); // 默认加载预约列表
+    }
+
+    // Tab 切换逻辑
+    function switchTab(tabName) {
+        // 切换按钮样式
+        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+        event.target.classList.add('active');
+
+        // 切换内容显示
+        document.querySelectorAll('.content-section').forEach(sec => sec.classList.remove('active'));
+        document.getElementById(`tab-${tabName}`).classList.add('active');
+
+        // 根据 tab 加载对应数据
+        if(tabName === 'bookings') loadBookings();
+        if(tabName === 'settings') loadAdmins();
+    }
+
+    // ======================= API 调用：预约管理 =======================
+
+    async function loadBookings() {
+        const tbody = document.getElementById('bookings-table-body');
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading...</td></tr>';
+
+        try {
+            const res = await fetch('http://localhost:3000/api/admin/bookings', { headers: getAuthHeaders() });
+            if(res.status === 401) return handleLogout(); // 凭证失效被踢出
+
+            const result = await res.json();
+
+            if (result.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No bookings found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            result.data.forEach(b => {
+                const tr = document.createElement('tr');
+                // 格式化展示内容，增加删除按钮
+                tr.innerHTML = `
+                        <td>#${b.id}</td>
+                        <td style="color: var(--primary-blue); font-weight: bold;">${b.date} <br> ${b.time}</td>
+                        <td>${b.room}</td>
+                        <td>${b.duration} Hrs</td>
+                        <td>${b.partySize}</td>
+                        <td>${b.name}</td>
+                        <td>${b.phone}</td>
+                        <td>
+                            <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>
+                        </td>
+                    `;
+                tbody.appendChild(tr);
+            });
+        } catch (err) {
+            tbody.innerHTML = '<tr><td colspan="8" style="color: red;">Failed to load data.</td></tr>';
+        }
+    }
+
+    // 删除单个预约
+    async function deleteBooking(id) {
+        if(!confirm(`Are you sure you want to delete Booking #${id}? This action cannot be undone.`)) return;
+
+        try {
+            const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+
+            if (res.ok) {
+                loadBookings(); // 删除成功后刷新表格
+            } else {
+                alert('Failed to delete booking.');
+            }
+        } catch (error) {
+            console.error('Error deleting booking:', error);
+            alert('Network error.');
+        }
+    }
+
+    // ======================= API 调用：管理员管理 =======================
+
+    async function loadAdmins() {
+        const tbody = document.getElementById('admins-table-body');
+        try {
+            const res = await fetch('http://localhost:3000/api/admin/list', { headers: getAuthHeaders() });
+            if(res.status === 401) return handleLogout();
+
+            const admins = await res.json();
+            tbody.innerHTML = '';
+            // 使用 sessionStorage 读取当前用户
+            const currentUser = sessionStorage.getItem('currentUser');
+
+            admins.forEach(admin => {
+                const isMe = admin.username === currentUser;
+                const tr = document.createElement('tr');
+
+                // 构建操作按钮：不能删自己，但可以改密码
+                let actionButtons = `
+                        <button class="action-btn btn-primary" onclick="openEditPassModal(${admin.id}, '${admin.username}')">Change Password</button>
+                    `;
+                if (!isMe) {
+                    actionButtons += `<button class="action-btn btn-danger" onclick="deleteAdmin(${admin.id}, '${admin.username}')">Delete</button>`;
+                } else {
+                    actionButtons += `<span style="color: var(--text-muted); font-size: 0.8rem; margin-left: 10px;">(You)</span>`;
+                }
+
+                tr.innerHTML = `
+                        <td>${admin.id}</td>
+                        <td style="font-weight: bold;">${admin.username}</td>
+                        <td>${actionButtons}</td>
+                    `;
+                tbody.appendChild(tr);
+            });
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function submitNewAdmin() {
+        const newUsername = document.getElementById('new-admin-user').value.trim();
+        const newPassword = document.getElementById('new-admin-pass').value.trim();
+        if(!newUsername || !newPassword) return alert('Fill all fields');
+
+        const res = await fetch('http://localhost:3000/api/admin/add', {
+            method: 'POST',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ newUsername, newPassword })
+        });
+
+        if (res.ok) {
+            closeModal('add-admin-modal');
+            loadAdmins(); // 刷新列表
+        } else {
+            const data = await res.json();
+            alert(data.error);
+        }
+    }
+
+    async function submitNewPassword() {
+        const id = document.getElementById('edit-admin-id').value;
+        const newPassword = document.getElementById('edit-new-pass').value.trim();
+        if(!newPassword) return alert('Enter new password');
+
+        const res = await fetch(`http://localhost:3000/api/admin/password/${id}`, {
+            method: 'PUT',
+            headers: getAuthHeaders(),
+            body: JSON.stringify({ newPassword })
+        });
+
+        if (res.ok) {
+            alert('Password changed successfully');
+            closeModal('edit-pass-modal');
+        } else {
+            alert('Failed to update password');
+        }
+    }
+
+    async function deleteAdmin(id, username) {
+        if(!confirm(`Are you sure you want to permanently delete admin: ${username}?`)) return;
+
+        const res = await fetch(`http://localhost:3000/api/admin/delete/${id}`, {
+            method: 'DELETE',
+            headers: getAuthHeaders()
+        });
+
+        if (res.ok) loadAdmins();
+    }
+
+    // ======================= 弹窗控制逻辑 =======================
+    function openAddAdminModal() {
+        document.getElementById('new-admin-user').value = '';
+        document.getElementById('new-admin-pass').value = '';
+        document.getElementById('add-admin-modal').style.display = 'flex';
+    }
+
+    function openEditPassModal(id, username) {
+        document.getElementById('edit-admin-id').value = id;
+        document.getElementById('edit-pass-username').innerText = `Editing password for: ${username}`;
+        document.getElementById('edit-new-pass').value = '';
+        document.getElementById('edit-pass-modal').style.display = 'flex';
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+    }
+</script>
+</body>
+</html>

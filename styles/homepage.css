@@ -1,0 +1,510 @@
+/* =========================================
+   0. 全局平滑滚动 (实现点击按钮平滑下滑)
+   ========================================= */
+html {
+    scroll-behavior: smooth;
+}
+
+/* =========================================
+   1. 基础设置与色彩变量 (深蓝主题 + 霓虹粉/蓝)
+   ========================================= */
+:root {
+    --bg-color: #060b14;           /* 深蓝/黑底色 */
+    --text-color: #f0f0f0;
+    --text-muted: #8a9bb2;
+
+    --primary-blue: #5b92ff;       /* 主题蓝 (用于高亮和按钮) */
+    --primary-blue-hover: #4078eb;
+
+    --neon-pink: #ff2a6d;          /* 光斑颜色 1 */
+    --neon-blue: #05d9e8;          /* 光斑颜色 2 */
+
+    /* 卡片玻璃态样式 */
+    --card-bg: rgba(16, 26, 45, 0.4);
+    --card-border: rgba(91, 146, 255, 0.2);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-color);
+    color: var(--text-color);
+    font-family: 'Helvetica Neue', Arial, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+    position: relative;
+}
+
+/* =========================================
+   2. 🌟 模糊光斑 (蓝 + 粉，带呼吸动画)
+   ========================================= */
+.background-glow-1 {
+    position: fixed;
+    top: -10%; right: -10%;
+    width: 65vw; height: 65vw;
+    background: radial-gradient(circle, rgba(5, 217, 232, 0.35) 0%, rgba(5, 217, 232, 0) 70%);
+    filter: blur(90px);
+    z-index: -1;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: pulseGlow 8s ease-in-out infinite alternate;
+}
+
+.background-glow-2 {
+    position: fixed;
+    bottom: -15%; left: -15%;
+    width: 75vw; height: 75vw;
+    background: radial-gradient(circle, rgba(255, 42, 109, 0.25) 0%, rgba(255, 42, 109, 0) 70%);
+    filter: blur(120px);
+    z-index: -1;
+    border-radius: 50%;
+    pointer-events: none;
+    animation: pulseGlow 12s ease-in-out infinite alternate-reverse;
+}
+
+@keyframes pulseGlow {
+    0% { transform: scale(1) translate(0, 0); opacity: 0.85; }
+    100% { transform: scale(1.15) translate(-30px, 30px); opacity: 1; }
+}
+
+/* =========================================
+   3. 通用样式 (Section & Titles)
+   ========================================= */
+section {
+    padding: 80px 10%;
+    max-width: 1600px;
+    margin: 0 auto;
+    /* 重要：因为导航栏固定在顶部，这里留出100px的滚动边距，防止锚点跳转时标题被遮挡 */
+    scroll-margin-top: 100px;
+}
+
+section h2 {
+    font-size: 2.2rem;
+    margin-bottom: 40px;
+    font-weight: 600;
+    letter-spacing: 2px;
+}
+
+.highlight {
+    color: var(--primary-blue);
+}
+
+/* =========================================
+   4. 导航栏 (Navbar) - 固定在顶部，带磨砂玻璃
+   ========================================= */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 10%;
+
+    position: fixed;
+    width: 100%;
+    top: 0;
+    z-index: 1000;
+
+    background-color: rgba(6, 11, 20, 0.75);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #fff;
+    letter-spacing: 1px;
+}
+
+.navbar ul {
+    list-style: none;
+    display: flex;
+    gap: 40px;
+}
+
+.navbar a {
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: color 0.3s;
+    letter-spacing: 1px;
+}
+
+.navbar a:hover, .navbar a.active {
+    color: #fff;
+}
+
+/* =========================================
+   5. 头部宣传区 (Hero Section)
+   ========================================= */
+.hero {
+    min-height: 90vh;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 100px; /* 避开固定导航栏的高度 */
+}
+
+.hero-content {
+    max-width: 600px;
+}
+
+.hero-title {
+    font-size: 4.5rem;
+    line-height: 1.1;
+    margin-bottom: 15px;
+    color: var(--primary-blue);
+    font-weight: 800;
+}
+
+.hero-subtitle {
+    font-size: 1.2rem;
+    color: #fff;
+    letter-spacing: 3px;
+    margin-bottom: 30px;
+    font-weight: 500;
+}
+
+.hero-desc {
+    color: var(--text-muted);
+    font-size: 1.1rem;
+    margin-bottom: 40px;
+    line-height: 1.8;
+}
+
+.hero-buttons {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 40px;
+}
+
+.btn-primary, .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 30px;
+    border-radius: 30px;
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+}
+
+.btn-primary {
+    background-color: var(--primary-blue);
+    color: #fff;
+    border: none;
+    box-shadow: 0 0 20px rgba(91, 146, 255, 0.4);
+}
+
+.btn-primary:hover {
+    background-color: var(--primary-blue-hover);
+    box-shadow: 0 0 30px rgba(91, 146, 255, 0.6);
+}
+
+.btn-secondary {
+    background-color: transparent;
+    color: #fff;
+    border: 1px solid var(--text-muted);
+}
+
+.btn-secondary:hover {
+    border-color: #fff;
+}
+
+.hero-contact {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+.hero-contact strong {
+    color: #fff;
+    text-decoration: underline;
+}
+
+/* =========================================
+   6. 包厢展示区 (Rooms Section)
+   ========================================= */
+.rooms-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+}
+
+.room-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    transition: transform 0.3s, border-color 0.3s;
+}
+
+.room-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary-blue);
+}
+
+/*.room-img-placeholder {*/
+/*    height: 250px;*/
+/*    background-color: rgba(0,0,0,0.5);*/
+/*    display: flex; align-items: center; justify-content: center;*/
+/*    color: var(--text-muted);*/
+/*}*/
+/* =========================================
+   6. 包厢展示区 (Rooms Section) - 补充与修正
+   ========================================= */
+
+/* 真实的包厢图片样式 */
+.room-img {
+    width: 100%;
+    height: 250px; /* 固定高度，让三张卡片一样高 */
+
+    /* 🌟 核心魔法属性：object-fit 🌟 */
+    object-fit: cover;
+    /* cover 的意思是：让图片填满这个 100%x250px 的区域，
+       保持原图比例不变，为了填满，图片的多余边缘可能会被自动裁剪掉。
+       这通常是卡片图片的最佳选择。 */
+
+    display: block; /* 消除 img 底部的默认空隙 */
+    transition: transform 0.5s ease; /* 为悬停效果加个动画 */
+}
+
+/* 进阶效果：鼠标悬停在卡片上时，图片微微放大，非常有高级感 */
+.room-card:hover .room-img {
+    transform: scale(1.05); /* 微微放大图片 */
+}
+
+.room-info {
+    padding: 25px;
+}
+
+.room-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.room-header h3 {
+    color: var(--primary-blue);
+    font-size: 1.3rem;
+}
+
+.price {
+    color: var(--primary-blue);
+    font-weight: bold;
+}
+
+.capacity {
+    color: #fff;
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.95rem;
+}
+
+.features-list {
+    list-style: none;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.features-list li {
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+}
+
+.features-list li::before {
+    content: '✦';
+    color: var(--primary-blue);
+    font-size: 0.8rem;
+    margin-right: 10px;
+}
+
+/* =========================================
+   7. 为什么选择我们 (Why Choose Us)
+   ========================================= */
+.features-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 30px;
+}
+
+.feature-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 40px 20px;
+    text-align: center;
+    backdrop-filter: blur(10px);
+}
+
+.icon-circle {
+    width: 60px;
+    height: 60px;
+    background-color: var(--primary-blue);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 20px auto;
+    font-size: 1.5rem;
+    color: #fff;
+    box-shadow: 0 0 20px rgba(91, 146, 255, 0.4);
+}
+
+.feature-card h3 {
+    color: var(--primary-blue);
+    font-size: 1.2rem;
+    margin-bottom: 15px;
+}
+
+.feature-card p {
+    color: var(--text-muted);
+    font-size: 0.95rem;
+}
+
+/* =========================================
+   8. 菜单区 (Food & Drinks Menu) - 4张图片网格
+   ========================================= */
+.menu-grid-container {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 40px;
+    margin-top: 30px;
+}
+
+.menu-item {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    overflow: hidden;
+    backdrop-filter: blur(10px);
+    transition: transform 0.3s ease, border-color 0.3s ease;
+}
+
+.menu-item:hover {
+    transform: translateY(-5px);
+    border-color: var(--primary-blue);
+    box-shadow: 0 10px 30px rgba(91, 146, 255, 0.2);
+}
+
+.menu-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.menu-placeholder-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: var(--text-muted);
+    font-size: 1.2rem;
+    font-style: italic;
+    pointer-events: none;
+}
+
+/* 当真实的图片加载成功并覆盖在上面时，隐藏占位文字 */
+.menu-item img[src]:not([src=""]) + .menu-placeholder-text {
+    display: none;
+}
+
+/* =========================================
+   9. 访问我们 (Visit Section)
+   ========================================= */
+.visit-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+}
+
+@media (max-width: 900px) {
+    .visit-grid { grid-template-columns: 1fr; }
+}
+
+.contact-info {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.contact-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    padding: 25px;
+    display: flex;
+    align-items: flex-start;
+    gap: 20px;
+    backdrop-filter: blur(10px);
+}
+
+.contact-card > i {
+    color: var(--primary-blue);
+    font-size: 1.5rem;
+    margin-top: 5px;
+}
+
+.contact-title {
+    color: #fff;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.contact-desc {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+.hours-list {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 10px;
+}
+
+.hours-list span {
+    display: inline-block;
+    width: 40px;
+    color: #fff;
+}
+
+.map-placeholder {
+    width: 100%;
+    height: 100%;
+    min-height: 400px;
+    background-color: rgba(0,0,0,0.3);
+    border: 1px solid var(--card-border);
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+}
+
+/* =========================================
+   10. 页脚 (Footer)
+   ========================================= */
+footer {
+    text-align: center;
+    padding: 30px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    margin-top: 50px;
+}

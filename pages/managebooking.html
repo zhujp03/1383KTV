@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Manage Booking - 1383KTV</title>
+  <link rel="stylesheet" href="../styles/managebooking.css">
+</head>
+<body>
+
+<nav class="top-nav">
+  <div class="logo">1383KTV</div>
+  <div class="nav-links">
+    <a href="homeindex.html">HOME</a>
+    <a href="booking.html">BOOK NOW</a>
+    <a href="managebooking.html" class="active">MANAGE BOOKING</a>
+  </div>
+</nav>
+
+<div class="manage-container">
+  <h1 class="manage-title">Find Your Reservation</h1>
+  <p class="manage-subtitle">Enter the phone number you used during booking.</p>
+
+  <div class="search-box">
+    <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 1234567890" onkeypress="handleEnter(event)">
+    <button class="btn-primary" onclick="searchBooking()" id="search-btn">Search</button>
+  </div>
+
+  <div id="results-container" class="results-container">
+  </div>
+</div>
+
+<script>
+  // 允许用户按回车键触发搜索
+  function handleEnter(event) {
+    if (event.key === 'Enter') {
+      searchBooking();
+    }
+  }
+
+  async function searchBooking() {
+    const phoneInput = document.getElementById('search-phone').value.trim();
+    const resultsContainer = document.getElementById('results-container');
+    const searchBtn = document.getElementById('search-btn');
+
+    if (!phoneInput) {
+      alert("Please enter a phone number.");
+      return;
+    }
+
+    // 搜索中状态
+    searchBtn.innerText = "Searching...";
+    searchBtn.disabled = true;
+    resultsContainer.innerHTML = '<p style="text-align:center; color: var(--text-muted);">Looking for your bookings...</p>';
+
+    try {
+      // 调用后端的查询 API
+      const response = await fetch(`http://localhost:3000/api/book/search/${phoneInput}`);
+      const result = await response.json();
+
+      searchBtn.innerText = "Search";
+      searchBtn.disabled = false;
+
+      if (response.ok) {
+        if (result.data.length === 0) {
+          // 没查到数据
+          resultsContainer.innerHTML = `
+                        <div style="text-align:center; padding: 40px; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color);">
+                            <h3 style="color: var(--text-main);">No Bookings Found</h3>
+                            <p style="color: var(--text-muted);">We couldn't find any reservations under the phone number <strong>${phoneInput}</strong>.</p>
+                        </div>
+                    `;
+        } else {
+          // 查到数据了，清空容器并循环渲染卡片
+          resultsContainer.innerHTML = '';
+          result.data.forEach(booking => {
+            const card = document.createElement('div');
+            card.className = 'booking-card';
+
+            // 动态生成卡片 HTML
+            card.innerHTML = `
+                            <div class="booking-header">
+                                <span class="booking-id">Booking ID: #${booking.id}</span>
+                                <span class="status-badge">Confirmed</span>
+                            </div>
+                            <div class="booking-details">
+                                <p><strong>Date:</strong> ${booking.date}</p>
+                                <p><strong>Time:</strong> ${booking.time}</p>
+                                <p><strong>Room:</strong> ${booking.room}</p>
+                                <p><strong>Duration:</strong> ${booking.duration} Hours</p>
+                                <p><strong>Party Size:</strong> ${booking.partySize} People</p>
+                                <p><strong>Name:</strong> ${booking.name}</p>
+                            </div>
+                        `;
+            resultsContainer.appendChild(card);
+          });
+        }
+      } else {
+        resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Error: ${result.error}</p>`;
+      }
+    } catch (error) {
+      console.error("Network Error:", error);
+      searchBtn.innerText = "Search";
+      searchBtn.disabled = false;
+      resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Failed to connect to the server.</p>`;
+    }
+  }
+</script>
+
+</body>
+</html>
