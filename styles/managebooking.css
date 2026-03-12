@@ -111,3 +111,99 @@ body {
 
 .booking-details p { margin: 10px 0; font-size: 1.1rem;}
 .booking-details strong { color: var(--primary-blue); width: 100px; display: inline-block;}
+/* =========================================
+   📱 移动端适配 (手机专用样式)
+   ========================================= */
+@media (max-width: 768px) {
+    /* 1. 让原本并排的容器变成上下排列 */
+    .rooms-grid, .features-grid, .menu-grid-container {
+        display: flex;
+        flex-direction: column; /* 垂直排列 */
+        gap: 20px;
+    }
+
+    /* 2. 让表格支持左右滑动 (关键！手机放不下长表格) */
+    .admin-table {
+        display: block;
+        overflow-x: auto; /* 允许横向滚动 */
+        white-space: nowrap; /* 防止内容折行 */
+    }
+
+    /* 3. 调整文字大小和边距 */
+    .hero-title {
+        font-size: 1.8rem; /* 电脑端可能很大，手机端要调小 */
+    }
+
+    .navbar {
+        padding: 10px 20px;
+        flex-direction: column; /* 导航栏 Logo 和 菜单上下排 */
+    }
+
+    .nav-links {
+        margin-top: 10px;
+        gap: 10px;
+    }
+
+    /* 4. 调整弹窗宽度 */
+    .modal-content {
+        width: 90%; /* 手机端弹窗占满 90% 宽度 */
+        padding: 20px;
+    }
+
+    /* 5. 让按钮更容易被手指点击 */
+    .btn-primary, .btn-secondary {
+        width: 100%; /* 按钮占满一行 */
+        padding: 15px;
+        font-size: 1.1rem;
+    }
+}
+
+/* =========================================
+   📱 移动端导航栏修复
+   ========================================= */
+@media (max-width: 600px) {
+    /* 1. 让导航栏容器支持垂直布局 */
+    .navbar, .top-nav {
+        flex-direction: column; /* Logo 和 菜单上下排 */
+        padding: 15px 10px !important;
+        height: auto !important; /* 取消固定高度 */
+    }
+
+    /* 2. 让 Logo 居中并增加间距 */
+    .logo {
+        margin-bottom: 15px;
+        font-size: 1.2rem;
+        text-align: center;
+    }
+
+    /* 3. 核心：让三个按钮均匀分布，不拥挤 */
+    nav ul, .nav-links {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap; /* 空间不够自动换行 */
+        gap: 15px;      /* 链接之间的间距 */
+        padding: 0;
+        margin: 0;
+        list-style: none;
+    }
+
+    /* 4. 调整链接文字大小，适合手指点击 */
+    nav ul li a, .nav-links a {
+        font-size: 0.9rem !important; /* 稍微调小一点点 */
+        padding: 5px 10px;
+        margin: 0 !important;
+        white-space: nowrap; /* 防止文字内部换行 */
+    }
+
+    /* 5. 顺便修复一下你截图里搜索框的宽度 */
+    .search-box {
+        flex-direction: column; /* 输入框和按钮在手机上上下排 */
+        width: 100%;
+        padding: 0 20px;
+    }
+
+    .neon-input, .search-box .btn-primary {
+        width: 100% !important; /* 宽度占满手机屏幕 */
+        margin-bottom: 10px;
+    }
+}

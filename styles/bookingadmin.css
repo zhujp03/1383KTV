@@ -232,3 +232,49 @@ body {
     gap: 10px;
     margin-top: 20px;
 }
+/* =========================================
+   📱 移动端适配 (手机专用样式)
+   ========================================= */
+@media (max-width: 768px) {
+    /* 1. 让原本并排的容器变成上下排列 */
+    .rooms-grid, .features-grid, .menu-grid-container {
+        display: flex;
+        flex-direction: column; /* 垂直排列 */
+        gap: 20px;
+    }
+
+    /* 2. 让表格支持左右滑动 (关键！手机放不下长表格) */
+    .admin-table {
+        display: block;
+        overflow-x: auto; /* 允许横向滚动 */
+        white-space: nowrap; /* 防止内容折行 */
+    }
+
+    /* 3. 调整文字大小和边距 */
+    .hero-title {
+        font-size: 1.8rem; /* 电脑端可能很大，手机端要调小 */
+    }
+
+    .navbar {
+        padding: 10px 20px;
+        flex-direction: column; /* 导航栏 Logo 和 菜单上下排 */
+    }
+
+    .nav-links {
+        margin-top: 10px;
+        gap: 10px;
+    }
+
+    /* 4. 调整弹窗宽度 */
+    .modal-content {
+        width: 90%; /* 手机端弹窗占满 90% 宽度 */
+        padding: 20px;
+    }
+
+    /* 5. 让按钮更容易被手指点击 */
+    .btn-primary, .btn-secondary {
+        width: 100%; /* 按钮占满一行 */
+        padding: 15px;
+        font-size: 1.1rem;
+    }
+}
