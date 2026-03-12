@@ -113,6 +113,60 @@
     </div>
 </div>
 
+<div id="edit-booking-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 500px;">
+        <h3>Edit Booking #<span id="edit-b-id-display"></span></h3>
+        <input type="hidden" id="edit-b-id">
+
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex: 1;">
+                <label>Date</label>
+                <input type="date" id="edit-b-date" class="neon-input">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Time</label>
+                <input type="time" id="edit-b-time" class="neon-input">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Room</label>
+            <select id="edit-b-room" class="neon-input" style="background-color: rgba(17, 24, 39, 0.9);">
+                <option value="Small Room">Small Room</option>
+                <option value="Medium Room">Medium Room</option>
+                <option value="Large Room">Large Room</option>
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex: 1;">
+                <label>Duration (Hours)</label>
+                <input type="number" id="edit-b-duration" class="neon-input" min="1">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Party Size</label>
+                <input type="number" id="edit-b-party" class="neon-input" min="1">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex: 1;">
+                <label>Customer Name</label>
+                <input type="text" id="edit-b-name" class="neon-input">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Phone</label>
+                <input type="text" id="edit-b-phone" class="neon-input">
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn-primary" style="background: transparent; border: 1px solid var(--text-muted);" onclick="closeModal('edit-booking-modal')">Cancel</button>
+            <button class="btn-primary" style="width: auto;" onclick="submitEditBooking()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
 <script>
     // 页面加载时检查登录状态，使用 sessionStorage
     window.onload = () => {
@@ -219,6 +273,10 @@
                         <td>${b.name}</td>
                         <td>${b.phone}</td>
                         <td>
+                            <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>
+                        </td>
+                        <td>
+                            <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${b.room}', '${b.partySize}', '${b.date}', '${b.time}', '${b.duration}', '${b.name}', '${b.phone}')">Edit</button>
                             <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>
                         </td>
                     `;
@@ -355,6 +413,53 @@
 
     function closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
+    }
+
+    // 打开编辑订单的弹窗，并自动填入当前数据
+    function openEditBookingModal(id, room, partySize, date, time, duration, name, phone) {
+        document.getElementById('edit-b-id-display').innerText = id;
+        document.getElementById('edit-b-id').value = id;
+        document.getElementById('edit-b-room').value = room;
+        document.getElementById('edit-b-party').value = partySize;
+        document.getElementById('edit-b-date').value = date;
+        document.getElementById('edit-b-time').value = time;
+        document.getElementById('edit-b-duration').value = duration;
+        document.getElementById('edit-b-name').value = name;
+        document.getElementById('edit-b-phone').value = phone;
+
+        document.getElementById('edit-booking-modal').style.display = 'flex';
+    }
+
+    // 提交修改到后端
+    async function submitEditBooking() {
+        const id = document.getElementById('edit-b-id').value;
+        const updatedData = {
+            room: document.getElementById('edit-b-room').value,
+            partySize: document.getElementById('edit-b-party').value,
+            date: document.getElementById('edit-b-date').value,
+            time: document.getElementById('edit-b-time').value,
+            duration: document.getElementById('edit-b-duration').value,
+            name: document.getElementById('edit-b-name').value,
+            phone: document.getElementById('edit-b-phone').value
+        };
+
+        try {
+            const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(updatedData)
+            });
+
+            if (res.ok) {
+                closeModal('edit-booking-modal');
+                loadBookings(); // 修改成功后刷新表格，就能看到新数据了
+            } else {
+                alert('Failed to update booking.');
+            }
+        } catch (error) {
+            console.error('Error updating booking:', error);
+            alert('Network error.');
+        }
     }
 </script>
 </body>
