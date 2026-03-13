@@ -146,9 +146,11 @@ section h2 {
 .hero {
     min-height: 90vh;
     display: flex;
-    align-items: center;
+    /*align-items: center;*/
     justify-content: flex-start;
-    padding-top: 100px; /* 避开固定导航栏的高度 */
+    /*padding-top: 100px; !* 避开固定导航栏的高度 *!*/
+    align-items: flex-start !important;
+    padding-top: 220px !important;
 }
 
 .hero-content {
