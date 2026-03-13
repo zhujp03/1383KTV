@@ -51,7 +51,7 @@
                         <h3>Small Room</h3>
                         <p class="price">$55/hr</p>
                     </div>
-                    <p class="capacity"><i class="fa-solid fa-user-group"></i> 1-4 people</p>
+                    <p class="capacity"><i class="fa-solid fa-user-group"></i> 1-8 people</p>
                     <ul class="features-list">
                         <li>Premium sound system</li>
                         <li>LED lighting</li>
@@ -68,7 +68,7 @@
                         <h3>Medium Room</h3>
                         <p class="price">$65/hr</p>
                     </div>
-                    <p class="capacity"><i class="fa-solid fa-user-group"></i> 1-8 people</p>
+                    <p class="capacity"><i class="fa-solid fa-user-group"></i> 1-12 people</p>
                     <ul class="features-list">
                         <li>Enhanced sound system</li>
                         <li>Dynamic lighting</li>
@@ -85,7 +85,7 @@
                         <h3>Large Room</h3>
                         <p class="price">$85/hr</p>
                     </div>
-                    <p class="capacity"><i class="fa-solid fa-user-group"></i> 1-15 people (max 17)</p>
+                    <p class="capacity"><i class="fa-solid fa-user-group"></i> 1-20 people (max 17)</p>
                     <ul class="features-list">
                         <li>Professional sound system</li>
                         <li>Stage lighting</li>
@@ -122,33 +122,117 @@
         </div>
     </section>
 
-    <section id = "menus"  class="menu-section">
+<!--    <section id = "menus"  class="menu-section">-->
+<!--        <h2><span class="highlight">FOOD & DRINKS</span> MENU</h2>-->
+
+<!--        <div class="menu-grid-container">-->
+
+<!--            <div class="menu-item">-->
+<!--                <img src="../menu_pic/pic_001.jpg" alt="Drink Menu Part 1" class="menu-img">-->
+<!--                <div class="menu-placeholder-text">Menu Image 1</div>-->
+<!--            </div>-->
+
+<!--            <div class="menu-item">-->
+<!--                <img src="../menu_pic/pic_002.jpg" alt="Drink Menu Part 2" class="menu-img">-->
+<!--                <div class="menu-placeholder-text">Menu Image 2</div>-->
+<!--            </div>-->
+
+<!--            <div class="menu-item">-->
+<!--                <img src="../menu_pic/pic_003.jpg" alt="Drink Menu Part 1" class="menu-img">-->
+<!--                <div class="menu-placeholder-text">Menu Image 3</div>-->
+<!--            </div>-->
+
+<!--            <div class="menu-item">-->
+<!--                <img src="../menu_pic/pic_004.jpg" alt="Food Menu Part 2" class="menu-img">-->
+<!--                <div class="menu-placeholder-text">Menu Image 4</div>-->
+<!--            </div>-->
+
+<!--        </div>-->
+<!--    </section>-->
+
+    <section id="menus" class="menu-section">
         <h2><span class="highlight">FOOD & DRINKS</span> MENU</h2>
 
         <div class="menu-grid-container">
-
             <div class="menu-item">
-                <img src="../menu_pic/pic_001.jpg" alt="Drink Menu Part 1" class="menu-img">
+                <img src="../menu_pic/pic_001.jpg" alt="Drink Menu Part 1" class="menu-img" onclick="openLightbox(0)" style="cursor: pointer;">
                 <div class="menu-placeholder-text">Menu Image 1</div>
             </div>
 
             <div class="menu-item">
-                <img src="../menu_pic/pic_002.jpg" alt="Drink Menu Part 2" class="menu-img">
+                <img src="../menu_pic/pic_002.jpg" alt="Drink Menu Part 2" class="menu-img" onclick="openLightbox(1)" style="cursor: pointer;">
                 <div class="menu-placeholder-text">Menu Image 2</div>
             </div>
 
             <div class="menu-item">
-                <img src="../menu_pic/pic_003.jpg" alt="Drink Menu Part 1" class="menu-img">
+                <img src="../menu_pic/pic_003.jpg" alt="Drink Menu Part 1" class="menu-img" onclick="openLightbox(2)" style="cursor: pointer;">
                 <div class="menu-placeholder-text">Menu Image 3</div>
             </div>
 
             <div class="menu-item">
-                <img src="../menu_pic/pic_004.jpg" alt="Food Menu Part 2" class="menu-img">
+                <img src="../menu_pic/pic_004.jpg" alt="Food Menu Part 2" class="menu-img" onclick="openLightbox(3)" style="cursor: pointer;">
                 <div class="menu-placeholder-text">Menu Image 4</div>
             </div>
-
         </div>
     </section>
+
+    <div id="custom-lightbox" class="lightbox-overlay">
+        <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
+        <button class="lightbox-prev" onclick="changeImage(-1)">&#10094;</button>
+
+        <img id="lightbox-img" src="" alt="Menu Fullscreen">
+
+        <button class="lightbox-next" onclick="changeImage(1)">&#10095;</button>
+    </div>
+
+    <script>
+        // 把你所有的菜单图片路径存进一个数组，顺序必须和 HTML 里的一致
+        const menuImages = [
+            "../menu_pic/pic_001.jpg",
+            "../menu_pic/pic_002.jpg",
+            "../menu_pic/pic_003.jpg",
+            "../menu_pic/pic_004.jpg"
+        ];
+
+        let currentImageIndex = 0;
+        const lightbox = document.getElementById('custom-lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+
+        // 打开灯箱
+        function openLightbox(index) {
+            currentImageIndex = index;
+            lightboxImg.src = menuImages[currentImageIndex];
+            lightbox.style.display = "flex";
+            document.body.style.overflow = "hidden"; // 防止背景页面滚动
+        }
+
+        // 关闭灯箱
+        function closeLightbox() {
+            lightbox.style.display = "none";
+            document.body.style.overflow = "auto"; // 恢复背景滚动
+        }
+
+        // 切换上一张/下一张
+        function changeImage(direction) {
+            currentImageIndex += direction;
+
+            // 循环逻辑：到了最后一张再点下一张，回到第一张
+            if (currentImageIndex >= menuImages.length) {
+                currentImageIndex = 0;
+            } else if (currentImageIndex < 0) {
+                currentImageIndex = menuImages.length - 1;
+            }
+
+            lightboxImg.src = menuImages[currentImageIndex];
+        }
+
+        // 点击黑色背景也能关闭
+        lightbox.addEventListener('click', function(e) {
+            if (e.target !== lightboxImg && e.target.tagName !== 'BUTTON') {
+                closeLightbox();
+            }
+        });
+    </script>
 
     <section class="visit-section">
         <h2><span class="highlight">VISIT</span> 1383 KTV</h2>
@@ -203,3 +287,4 @@
 
 </body>
 </html>
+

@@ -1,7 +1,6 @@
 <!--<!DOCTYPE html>-->
 <!--<html lang="en">-->
 <!--<head>-->
-
 <!--    <meta charset="UTF-8">-->
 <!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
 <!--    <title>1383 KTV - Admin Portal</title>-->
@@ -53,24 +52,24 @@
 <!--                <th>Party Size</th>-->
 <!--                <th>Customer Name</th>-->
 <!--                <th>Phone</th>-->
-<!--                <th>Actions</th> </tr>-->
+<!--                <th>Deposit</th>-->
+<!--                <th>Actions</th>-->
+<!--            </tr>-->
 <!--            </thead>-->
 <!--            <tbody id="bookings-table-body">-->
 <!--            </tbody>-->
 <!--        </table>-->
-<!--        <div class="section-header" style="margin-top: 50px;">-->
-<!--            <h2>Visual Timetable</h2>-->
-<!--        </div>-->
 
-<!--&lt;!&ndash;        <div class="timetable-wrapper">&ndash;&gt;-->
-<!--&lt;!&ndash;            <div class="timetable-grid" id="timetable-container">&ndash;&gt;-->
-<!--&lt;!&ndash;            </div>&ndash;&gt;-->
 <!--        <div class="section-header" style="margin-top: 50px;">-->
-<!--            <h2>Daily Timetable (Classic View)</h2>-->
+<!--            <h2>Weekly Timetable</h2>-->
+<!--            <div class="week-nav" style="display: flex; align-items: center;">-->
+<!--                <button class="btn-primary" style="width: auto; padding: 5px 15px; background: transparent; border: 1px solid var(&#45;&#45;primary-blue);" onclick="changeWeek(-1)">◀ Prev</button>-->
+<!--                <h3 id="week-display" style="margin: 0 20px; color: var(&#45;&#45;primary-blue);">Week of ...</h3>-->
+<!--                <button class="btn-primary" style="width: auto; padding: 5px 15px; background: transparent; border: 1px solid var(&#45;&#45;primary-blue);" onclick="changeWeek(1)">Next ▶</button>-->
+<!--            </div>-->
 <!--        </div>-->
 
 <!--        <div class="uni-timetable" id="timetable-container">-->
-
 <!--        </div>-->
 <!--    </section>-->
 
@@ -149,7 +148,7 @@
 <!--            <select id="edit-b-room" class="neon-input" style="background-color: rgba(17, 24, 39, 0.9);">-->
 <!--                <option value="Small Room">Small Room</option>-->
 <!--                <option value="Medium Room">Medium Room</option>-->
-<!--                <option value="Large Room">Large Room</option>-->
+<!--                <option value="VIP Room">VIP Room</option>-->
 <!--            </select>-->
 <!--        </div>-->
 
@@ -183,7 +182,11 @@
 <!--</div>-->
 
 <!--<script>-->
-<!--    // 页面加载时检查登录状态，使用 sessionStorage-->
+<!--    // ======================= 全局变量 (用于周历计算) =======================-->
+<!--    let allBookingsData = [];-->
+<!--    let currentWeekOffset = 0; // 0=本周，-1=上周，1=下周-->
+
+<!--    // 页面加载时检查登录状态-->
 <!--    window.onload = () => {-->
 <!--        const currentUser = sessionStorage.getItem('currentUser');-->
 <!--        if (currentUser) {-->
@@ -191,7 +194,6 @@
 <!--        }-->
 <!--    };-->
 
-<!--    // 获取通用的请求头 (携带我们明文验证的凭证)-->
 <!--    function getAuthHeaders() {-->
 <!--        return {-->
 <!--            'Content-Type': 'application/json',-->
@@ -199,15 +201,12 @@
 <!--        };-->
 <!--    }-->
 
-<!--    // 1. 登录处理-->
 <!--    async function handleLogin() {-->
 <!--        const user = document.getElementById('login-user').value.trim();-->
 <!--        const pass = document.getElementById('login-pass').value.trim();-->
-
 <!--        if(!user || !pass) return alert('Please enter username and password');-->
 
 <!--        try {-->
-<!--            // const res = await fetch('http://localhost:3000/api/admin/login', {-->
 <!--            const res = await fetch('/api/admin/login', {-->
 <!--                method: 'POST',-->
 <!--                headers: { 'Content-Type': 'application/json' },-->
@@ -216,7 +215,6 @@
 
 <!--            const data = await res.json();-->
 <!--            if (res.ok) {-->
-<!--                // 登录成功存入 sessionStorage-->
 <!--                sessionStorage.setItem('currentUser', data.username);-->
 <!--                showDashboard(data.username);-->
 <!--            } else {-->
@@ -228,7 +226,6 @@
 <!--    }-->
 
 <!--    function handleLogout() {-->
-<!--        // 登出时清除 sessionStorage-->
 <!--        sessionStorage.removeItem('currentUser');-->
 <!--        document.getElementById('dashboard-view').style.display = 'none';-->
 <!--        document.getElementById('login-view').style.display = 'flex';-->
@@ -236,77 +233,23 @@
 <!--        document.getElementById('login-pass').value = '';-->
 <!--    }-->
 
-<!--    // 显示主控台，并加载初始数据-->
 <!--    function showDashboard(username) {-->
 <!--        document.getElementById('login-view').style.display = 'none';-->
 <!--        document.getElementById('dashboard-view').style.display = 'block';-->
 <!--        document.getElementById('welcome-msg').innerText = `Welcome, ${username}`;-->
-<!--        loadBookings(); // 默认加载预约列表-->
+<!--        loadBookings();-->
 <!--    }-->
 
-<!--    // Tab 切换逻辑-->
 <!--    function switchTab(tabName) {-->
-<!--        // 切换按钮样式-->
 <!--        document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));-->
 <!--        event.target.classList.add('active');-->
 
-<!--        // 切换内容显示-->
 <!--        document.querySelectorAll('.content-section').forEach(sec => sec.classList.remove('active'));-->
 <!--        document.getElementById(`tab-${tabName}`).classList.add('active');-->
 
-<!--        // 根据 tab 加载对应数据-->
 <!--        if(tabName === 'bookings') loadBookings();-->
 <!--        if(tabName === 'settings') loadAdmins();-->
 <!--    }-->
-
-<!--    // ======================= API 调用：预约管理 =======================-->
-
-<!--    // async function loadBookings() {-->
-<!--    //     const tbody = document.getElementById('bookings-table-body');-->
-<!--    //     tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading...</td></tr>';-->
-<!--    //-->
-<!--    //     try {-->
-<!--    //         // const res = await fetch('http://localhost:3000/api/admin/bookings', { headers: getAuthHeaders() });-->
-<!--    //         const res = await fetch('/api/admin/bookings', { headers: getAuthHeaders() });-->
-<!--    //         if(res.status === 401) return handleLogout(); // 凭证失效被踢出-->
-<!--    //-->
-<!--    //         const result = await res.json();-->
-<!--    //-->
-<!--    //         if (result.data.length === 0) {-->
-<!--    //             tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(&#45;&#45;text-muted);">No bookings found.</td></tr>';-->
-<!--    //             return;-->
-<!--    //         }-->
-<!--    //-->
-<!--    //-->
-<!--    //-->
-<!--    //         tbody.innerHTML = '';-->
-<!--    //         result.data.forEach(b => {-->
-<!--    //             const tr = document.createElement('tr');-->
-<!--    //             // 格式化展示内容，增加删除按钮-->
-<!--    //             tr.innerHTML = `-->
-<!--    //                     <td>#${b.id}</td>-->
-<!--    //                     <td style="color: var(&#45;&#45;primary-blue); font-weight: bold;">${b.date} <br> ${b.time}</td>-->
-<!--    //                     <td>${b.room}</td>-->
-<!--    //                     <td>${b.duration} Hrs</td>-->
-<!--    //                     <td>${b.partySize}</td>-->
-<!--    //                     <td>${b.name}</td>-->
-<!--    //                     <td>${b.phone}</td>-->
-<!--    //                     <td>-->
-<!--    //                         <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>-->
-<!--    //                     </td>-->
-<!--    //                     <td>-->
-<!--    //                         <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${b.room}', '${b.partySize}', '${b.date}', '${b.time}', '${b.duration}', '${b.name}', '${b.phone}')">Edit</button>-->
-<!--    //                         <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>-->
-<!--    //                     </td>-->
-<!--    //                 `;-->
-<!--    //             tbody.appendChild(tr);-->
-<!--    //         });-->
-<!--    //     } catch (err) {-->
-<!--    //         tbody.innerHTML = '<tr><td colspan="8" style="color: red;">Failed to load data.</td></tr>';-->
-<!--    //     }-->
-<!--    //-->
-<!--    //-->
-<!--    // }-->
 
 <!--    // ======================= API 调用：预约管理 =======================-->
 
@@ -316,43 +259,41 @@
 
 <!--        try {-->
 <!--            const res = await fetch('/api/admin/bookings', { headers: getAuthHeaders() });-->
-<!--            if(res.status === 401) return handleLogout(); // 凭证失效被踢出-->
+<!--            if(res.status === 401) return handleLogout();-->
 
 <!--            const result = await res.json();-->
 
-<!--            // 如果没有预约数据-->
 <!--            if (result.data.length === 0) {-->
 <!--                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(&#45;&#45;text-muted);">No bookings found.</td></tr>';-->
-<!--                generateTimetable([]); // 清空时间表-->
+<!--                allBookingsData = [];-->
+<!--                renderWeeklyTimetable(); // 清空并渲染空的周历-->
 <!--                return;-->
 <!--            }-->
+
+<!--            allBookingsData = result.data; // 存入全局变量供周历使用-->
 
 <!--            // 1. 渲染纯文本表格-->
 <!--            tbody.innerHTML = '';-->
 <!--            result.data.forEach(b => {-->
 <!--                const tr = document.createElement('tr');-->
-<!--                // 修复了你之前重复写了两个 <td> 操作按钮的问题，现在合并为一个 <td>-->
 <!--                tr.innerHTML = `-->
-<!--                <td>#${b.id}</td>-->
-<!--                <td style="color: var(&#45;&#45;primary-blue); font-weight: bold;">${b.date} <br> ${b.time}</td>-->
-<!--                <td>${b.room}</td>-->
-<!--                <td>${b.duration} Hrs</td>-->
-<!--                <td>${b.partySize}</td>-->
-<!--                <td>${b.name}</td>-->
-<!--                <td>${b.phone}</td>-->
-<!--                <td>-->
-<!--                    <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${b.room}', '${b.partySize}', '${b.date}', '${b.time}', '${b.duration}', '${b.name}', '${b.phone}')">Edit</button>-->
-<!--                    <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>-->
-<!--                </td>-->
-<!--            `;-->
+<!--                    <td>#${b.id}</td>-->
+<!--                    <td style="color: var(&#45;&#45;primary-blue); font-weight: bold;">${b.date} <br> ${b.time}</td>-->
+<!--                    <td>${b.room}</td>-->
+<!--                    <td>${b.duration} Hrs</td>-->
+<!--                    <td>${b.partySize}</td>-->
+<!--                    <td>${b.name}</td>-->
+<!--                    <td>${b.phone}</td>-->
+<!--                    <td>-->
+<!--                        <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${b.room}', '${b.partySize}', '${b.date}', '${b.time}', '${b.duration}', '${b.name}', '${b.phone}')">Edit</button>-->
+<!--                        <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>-->
+<!--                    </td>-->
+<!--                `;-->
 <!--                tbody.appendChild(tr);-->
 <!--            });-->
 
-<!--            // 2. 渲染可视化时间表 (Timetable)-->
-<!--            // 确保你的 HTML 里有 <div id="timetable-container" class="timetable-grid"></div>-->
-<!--            if (document.getElementById('timetable-container')) {-->
-<!--                generateTimetable(result.data);-->
-<!--            }-->
+<!--            // 2. 渲染可视化周历-->
+<!--            renderWeeklyTimetable();-->
 
 <!--        } catch (err) {-->
 <!--            tbody.innerHTML = '<tr><td colspan="8" style="color: red;">Failed to load data.</td></tr>';-->
@@ -360,117 +301,184 @@
 <!--        }-->
 <!--    }-->
 
-<!--    // ======================= 核心功能：生成可视化时间表 =======================-->
+<!--    async function deleteBooking(id) {-->
+<!--        if(!confirm(`Are you sure you want to delete Booking #${id}? This action cannot be undone.`)) return;-->
+<!--        try {-->
+<!--            const res = await fetch(`/api/admin/bookings/${id}`, { method: 'DELETE', headers: getAuthHeaders() });-->
+<!--            if (res.ok) {-->
+<!--                loadBookings();-->
+<!--            } else {-->
+<!--                alert('Failed to delete booking.');-->
+<!--            }-->
+<!--        } catch (error) {-->
+<!--            console.error('Error deleting booking:', error);-->
+<!--            alert('Network error.');-->
+<!--        }-->
+<!--    }-->
 
-<!--    // function generateTimetable(bookings) {-->
+<!--    // ======================= 核心功能：生成按周显示的课表 =======================-->
+
+<!--    function changeWeek(offset) {-->
+<!--        currentWeekOffset += offset;-->
+<!--        renderWeeklyTimetable();-->
+<!--    }-->
+
+<!--    function formatDateStr(dateObj) {-->
+<!--        const y = dateObj.getFullYear();-->
+<!--        const m = String(dateObj.getMonth() + 1).padStart(2, '0');-->
+<!--        const d = String(dateObj.getDate()).padStart(2, '0');-->
+<!--        return `${y}-${m}-${d}`;-->
+<!--    }-->
+
+<!--    // function renderWeeklyTimetable() {-->
 <!--    //     const container = document.getElementById('timetable-container');-->
-<!--    //     if (!container) return; // 如果找不到容器，直接跳过-->
+<!--    //     if (!container) return;-->
+<!--    //     container.innerHTML = '';-->
 <!--    //-->
-<!--    //     container.innerHTML = ''; // 清空旧的时间表-->
+<!--    //     // 1. 计算当前视图的 7 天日期-->
+<!--    //     const today = new Date();-->
+<!--    //     const currentDayOfWeek = today.getDay() || 7;-->
+<!--    //     const startOfWeek = new Date(today);-->
+<!--    //     startOfWeek.setDate(today.getDate() - currentDayOfWeek + 1 + (currentWeekOffset * 7));-->
 <!--    //-->
-<!--    //     // 强制每次渲染前清空并重新设置网格样式（防止被覆盖）-->
-<!--    //     container.style.display = 'grid';-->
-<!--    //     container.style.gridTemplateColumns = '80px repeat(3, 1fr)';-->
-<!--    //     container.style.gridTemplateRows = '40px repeat(9, 60px)';-->
-<!--    //     container.style.gap = '1px';-->
-<!--    //     container.style.backgroundColor = 'var(&#45;&#45;border-color)';-->
-<!--    //     container.style.position = 'relative';-->
+<!--    //     const weekDaysInfo = [];-->
+<!--    //     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];-->
 <!--    //-->
-<!--    //     // 1. 定义房间和时间的映射-->
-<!--    //     const rooms = ["Small Room", "Medium Room", "Large Room"];-->
-<!--    //     const startHour = 18; // 晚上 6 点开始营业 (18:00)-->
-<!--    //     const totalHours = 9;  // 营业到凌晨 3 点 (一共 9 个小时区块)-->
-<!--    //-->
-<!--    //     // 2. 渲染表头 (第一行，显示房间名)-->
-<!--    //     container.appendChild(createDiv('time-label', '')); // 左上角留空-->
-<!--    //     rooms.forEach(room => {-->
-<!--    //         container.appendChild(createDiv('grid-header', room));-->
-<!--    //     });-->
-<!--    //-->
-<!--    //     // 3. 渲染时间轴和空白的背景格子-->
-<!--    //     for (let i = 0; i < totalHours; i++) {-->
-<!--    //         let displayHour = (startHour + i) % 24;-->
-<!--    //         let timeText = `${displayHour > 12 ? displayHour - 12 : (displayHour === 0 ? 12 : displayHour)}:00 ${displayHour >= 12 && displayHour < 24 ? 'PM' : 'AM'}`;-->
-<!--    //-->
-<!--    //         // 第一列：时间标签-->
-<!--    //         container.appendChild(createDiv('time-label', timeText));-->
-<!--    //-->
-<!--    //         // 后面三列：每个房间的空白底板-->
-<!--    //         rooms.forEach(() => {-->
-<!--    //             const cell = document.createElement('div');-->
-<!--    //             cell.style.background = 'var(&#45;&#45;bg-dark)';-->
-<!--    //             container.appendChild(cell);-->
+<!--    //     for (let i = 0; i < 7; i++) {-->
+<!--    //         const d = new Date(startOfWeek);-->
+<!--    //         d.setDate(startOfWeek.getDate() + i);-->
+<!--    //         weekDaysInfo.push({-->
+<!--    //             dateObj: d,-->
+<!--    //             dateStr: formatDateStr(d),-->
+<!--    //             dayName: dayNames[i]-->
 <!--    //         });-->
 <!--    //     }-->
 <!--    //-->
-<!--    //     // 4. 将实际的预约数据贴到对应的网格上-->
-<!--    //     bookings.forEach(b => {-->
-<!--    //         // 找列号：Small是第2列，Medium是第3列，Large是第4列 (第1列是时间)-->
-<!--    //         const colIndex = rooms.indexOf(b.room) + 2;-->
-<!--    //         if (colIndex < 2) return; // 未知房间，跳过-->
+<!--    //     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];-->
+<!--    //     document.getElementById('week-display').innerText = `Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}`;-->
 <!--    //-->
-<!--    //         // 解析时间：将 "6:00 PM" 转换为 24 小时制的 18-->
-<!--    //         const hourMatch = b.time.match(/(\d+):/);-->
-<!--    //         if (!hourMatch) return; // 时间格式不对，跳过-->
+<!--    //     // 2. 营业时间设置-->
+<!--    //     const startHour = 18; // 18:00-->
+<!--    //     const totalHours = 9; // 9个小时-->
+<!--    //     const PIXELS_PER_MIN = 1; // 1分钟 = 1像素-->
 <!--    //-->
-<!--    //         let hour = parseInt(hourMatch[1]);-->
-<!--    //         const isPM = b.time.toLowerCase().includes('pm');-->
-<!--    //         let hour24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);-->
+<!--    //     // 3. 构建左侧时间轴-->
+<!--    //     const timeCol = document.createElement('div');-->
+<!--    //     timeCol.className = 'uni-time-col';-->
+<!--    //     for (let i = 0; i < totalHours; i++) {-->
+<!--    //         let displayHour = (startHour + i) % 24;-->
+<!--    //         let ampm = displayHour >= 12 && displayHour < 24 ? 'PM' : 'AM';-->
+<!--    //         let hour12 = displayHour > 12 ? displayHour - 12 : (displayHour === 0 ? 12 : displayHour);-->
 <!--    //-->
-<!--    //         // 处理凌晨跨天逻辑 (比如凌晨 1 点、2 点，在我们的逻辑里算是 25点、26点)-->
-<!--    //         if (hour24 < startHour) hour24 += 24;-->
+<!--    //         const timeLabel = document.createElement('div');-->
+<!--    //         timeLabel.className = 'uni-time-label';-->
+<!--    //         timeLabel.innerText = `${hour12}:00 ${ampm}`;-->
+<!--    //         timeCol.appendChild(timeLabel);-->
+<!--    //     }-->
+<!--    //     container.appendChild(timeCol);-->
 <!--    //-->
-<!--    //         // 找行号：+2是因为第1行是表头-->
-<!--    //         const rowStart = (hour24 - startHour) + 2;-->
-<!--    //         const rowSpan = parseInt(b.duration) || 1;-->
+<!--    //     // 4. 构建右侧 7 天的列-->
+<!--    //     const dayColsContainer = document.createElement('div');-->
+<!--    //     dayColsContainer.className = 'uni-day-cols';-->
 <!--    //-->
-<!--    //         // 创建预约彩色区块-->
-<!--    //         const slot = document.createElement('div');-->
-<!--    //         slot.className = 'booking-slot';-->
+<!--    //     const roomLayout = {-->
+<!--    //         "Small Room":  { left: "0%", width: "33%", color: "#3B82F6", label: "S" },   // 蓝色-->
+<!--    //         "Medium Room": { left: "33%", width: "33%", color: "#10B981", label: "M" },  // 绿色-->
+<!--    //         "Large Room":  { left: "66%", width: "33%", color: "#F59E0B", label: "V" }   // 橙色-->
+<!--    //     };-->
 <!--    //-->
-<!--    //         // 区块内部显示的文字-->
-<!--    //         slot.innerHTML = `-->
-<!--    //         <div style="font-weight:bold; font-size:0.9rem; margin-bottom:2px;">${b.name}</div>-->
-<!--    //         <div style="font-size:0.75rem;">👥 ${b.partySize} | 🕒 ${b.duration}h</div>-->
-<!--    //     `;-->
+<!--    //     weekDaysInfo.forEach(dayInfo => {-->
+<!--    //         const col = document.createElement('div');-->
+<!--    //         col.className = 'uni-day-col';-->
 <!--    //-->
-<!--    //         // CSS Grid 绝对定位魔法-->
-<!--    //         slot.style.gridColumn = colIndex;-->
-<!--    //         slot.style.gridRow = `${rowStart} / span ${rowSpan}`;-->
+<!--    //         const header = document.createElement('div');-->
+<!--    //         header.className = 'uni-day-header';-->
 <!--    //-->
-<!--    //         // 给个好看的背景色，点击可以直接编辑！-->
-<!--    //         slot.style.background = 'rgba(59, 130, 246, 0.2)';-->
-<!--    //         slot.style.border = '1px solid var(&#45;&#45;primary-blue)';-->
-<!--    //         slot.style.borderRadius = '4px';-->
-<!--    //         slot.style.padding = '8px';-->
-<!--    //         slot.style.cursor = 'pointer';-->
-<!--    //         slot.style.color = 'white';-->
+<!--    //         if (dayInfo.dateStr === formatDateStr(new Date())) {-->
+<!--    //             header.style.borderTop = "3px solid var(&#45;&#45;primary-blue)";-->
+<!--    //             header.style.backgroundColor = "rgba(59, 130, 246, 0.1)";-->
+<!--    //         }-->
 <!--    //-->
-<!--    //         // 添加点击事件：点一下时间表里的方块，直接弹出编辑窗口-->
-<!--    //         slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone);-->
+<!--    //         header.innerHTML = `<span class="day-name">${dayInfo.dayName}</span><span class="day-date">${dayInfo.dateStr.slice(5)}</span>`;-->
+<!--    //         col.appendChild(header);-->
 <!--    //-->
-<!--    //         container.appendChild(slot);-->
+<!--    //         const eventsArea = document.createElement('div');-->
+<!--    //         eventsArea.className = 'uni-day-events';-->
+<!--    //-->
+<!--    //         // 5. 过滤出这一天的所有预约并渲染-->
+<!--    //         const todaysBookings = allBookingsData.filter(b => b.date === dayInfo.dateStr);-->
+<!--    //-->
+<!--    //         todaysBookings.forEach(b => {-->
+<!--    //             const layout = roomLayout[b.room] || roomLayout["Small Room"];-->
+<!--    //-->
+<!--    //             let [hh, mm] = b.time.split(':').map(Number);-->
+<!--    //             if (b.time.toLowerCase().includes('pm') && hh !== 12) hh += 12;-->
+<!--    //             if (b.time.toLowerCase().includes('am') && hh === 12) hh = 0;-->
+<!--    //             if (hh < startHour) hh += 24;-->
+<!--    //-->
+<!--    //             const minutesFromStart = ((hh - startHour) * 60) + (mm || 0);-->
+<!--    //             const durationMinutes = parseFloat(b.duration) * 60;-->
+<!--    //-->
+<!--    //             const slot = document.createElement('div');-->
+<!--    //             slot.className = 'uni-booking-block';-->
+<!--    //-->
+<!--    //             slot.style.top = `${minutesFromStart * PIXELS_PER_MIN}px`;-->
+<!--    //             slot.style.height = `${durationMinutes * PIXELS_PER_MIN}px`;-->
+<!--    //             slot.style.left = layout.left;-->
+<!--    //             slot.style.width = layout.width;-->
+<!--    //             slot.style.backgroundColor = layout.color;-->
+<!--    //-->
+<!--    //             slot.innerHTML = `-->
+<!--    //                 <div style="font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">[${layout.label}] ${b.name}</div>-->
+<!--    //                 <div>${b.partySize}p</div>-->
+<!--    //             `;-->
+<!--    //-->
+<!--    //             slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone);-->
+<!--    //             eventsArea.appendChild(slot);-->
+<!--    //         });-->
+<!--    //-->
+<!--    //         col.appendChild(eventsArea);-->
+<!--    //         dayColsContainer.appendChild(col);-->
 <!--    //     });-->
+<!--    //-->
+<!--    //     container.appendChild(dayColsContainer);-->
 <!--    // }-->
 
-<!--    // ======================= 核心功能：生成可视化时间表 (完美复刻大学课表版) =======================-->
-
-<!--    function generateTimetable(bookings) {-->
+<!--    function renderWeeklyTimetable() {-->
 <!--        const container = document.getElementById('timetable-container');-->
 <!--        if (!container) return;-->
+<!--        container.innerHTML = '';-->
 
-<!--        container.innerHTML = ''; // 清空旧数据-->
+<!--        // 1. 计算当前视图的 7 天日期-->
+<!--        const today = new Date();-->
+<!--        const currentDayOfWeek = today.getDay() || 7;-->
+<!--        const startOfWeek = new Date(today);-->
+<!--        startOfWeek.setDate(today.getDate() - currentDayOfWeek + 1 + (currentWeekOffset * 7));-->
 
-<!--        const rooms = ["Small Room", "Medium Room", "Large Room"];-->
-<!--        const startHour = 18; // 起始时间：18:00 (6:00 PM)-->
-<!--        const totalHours = 9; // 营业 9 个小时-->
-<!--        const PIXELS_PER_HOUR = 60; // 核心比例尺：1小时 = 60像素-->
-<!--        const PIXELS_PER_MIN = PIXELS_PER_HOUR / 60;-->
+<!--        const weekDaysInfo = [];-->
+<!--        const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];-->
 
-<!--        // 1. 创建左侧的时间轴-->
+<!--        for (let i = 0; i < 7; i++) {-->
+<!--            const d = new Date(startOfWeek);-->
+<!--            d.setDate(startOfWeek.getDate() + i);-->
+<!--            weekDaysInfo.push({-->
+<!--                dateObj: d,-->
+<!--                dateStr: formatDateStr(d),-->
+<!--                dayName: dayNames[i]-->
+<!--            });-->
+<!--        }-->
+
+<!--        const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];-->
+<!--        document.getElementById('week-display').innerText = `Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}`;-->
+
+<!--        // 2. 营业时间设置-->
+<!--        const startHour = 18; // 18:00-->
+<!--        const totalHours = 9; // 9个小时-->
+<!--        const PIXELS_PER_MIN = 1; // 1分钟 = 1像素-->
+
+<!--        // 3. 构建左侧时间轴-->
 <!--        const timeCol = document.createElement('div');-->
 <!--        timeCol.className = 'uni-time-col';-->
-
 <!--        for (let i = 0; i < totalHours; i++) {-->
 <!--            let displayHour = (startHour + i) % 24;-->
 <!--            let ampm = displayHour >= 12 && displayHour < 24 ? 'PM' : 'AM';-->
@@ -483,149 +491,128 @@
 <!--        }-->
 <!--        container.appendChild(timeCol);-->
 
-<!--        // 2. 创建右侧的房间列容器-->
-<!--        const roomColsContainer = document.createElement('div');-->
-<!--        roomColsContainer.className = 'uni-room-cols';-->
+<!--        // 4. 构建右侧 7 天的列-->
+<!--        const dayColsContainer = document.createElement('div');-->
+<!--        dayColsContainer.className = 'uni-day-cols';-->
 
-<!--        // 提前为每个房间创建一个列，并存入字典方便后续找-->
-<!--        const roomEventContainers = {};-->
-
-<!--        rooms.forEach(roomName => {-->
+<!--        weekDaysInfo.forEach(dayInfo => {-->
 <!--            const col = document.createElement('div');-->
-<!--            col.className = 'uni-room-col';-->
+<!--            col.className = 'uni-day-col';-->
 
-<!--            // 房间表头-->
 <!--            const header = document.createElement('div');-->
-<!--            header.className = 'uni-room-header';-->
-<!--            header.innerText = roomName;-->
+<!--            header.className = 'uni-day-header';-->
+
+<!--            if (dayInfo.dateStr === formatDateStr(new Date())) {-->
+<!--                header.style.borderTop = "3px solid var(&#45;&#45;primary-blue)";-->
+<!--                header.style.backgroundColor = "rgba(59, 130, 246, 0.1)";-->
+<!--            }-->
+
+<!--            header.innerHTML = `<span class="day-name">${dayInfo.dayName}</span><span class="day-date">${dayInfo.dateStr.slice(5)}</span>`;-->
 <!--            col.appendChild(header);-->
 
-<!--            // 存放色块的容器 (相对定位)-->
 <!--            const eventsArea = document.createElement('div');-->
-<!--            eventsArea.className = 'uni-room-events';-->
-<!--            roomEventContainers[roomName] = eventsArea;-->
+<!--            eventsArea.className = 'uni-day-events';-->
+
+<!--            // 5. 过滤出这一天的所有预约-->
+<!--            const todaysBookings = allBookingsData.filter(b => b.date === dayInfo.dateStr);-->
+
+<!--            // 🌟 核心升级：定义 5 个物理房间的轨道配置 (总共分 5 列，每列 20%)-->
+<!--            const roomConfig = {-->
+<!--                "Small Room":  { baseCol: 0, maxRooms: 2, color: "#3B82F6", label: "S" }, // 占第 0, 1 列 (2个小包)-->
+<!--                "Medium Room": { baseCol: 2, maxRooms: 1, color: "#10B981", label: "M" }, // 占第 2 列 (1个中包)-->
+<!--                "Large Room":  { baseCol: 3, maxRooms: 2, color: "#F59E0B", label: "V" }, // 占第 3, 4 列 (兼容你的 Large Room)-->
+<!--                "VIP Room":    { baseCol: 3, maxRooms: 2, color: "#F59E0B", label: "V" }  // 占第 3, 4 列 (兼容叫 VIP Room 的情况)-->
+<!--            };-->
+
+<!--            // a. 预处理：计算每个订单的精确起始和结束分钟数-->
+<!--            todaysBookings.forEach(b => {-->
+<!--                let [hh, mm] = b.time.split(':').map(Number);-->
+<!--                if (b.time.toLowerCase().includes('pm') && hh !== 12) hh += 12;-->
+<!--                if (b.time.toLowerCase().includes('am') && hh === 12) hh = 0;-->
+<!--                if (hh < startHour) hh += 24;-->
+
+<!--                b._startMins = ((hh - startHour) * 60) + (mm || 0);-->
+<!--                b._endMins = b._startMins + (parseFloat(b.duration) * 60);-->
+<!--                b._assignedSubCol = 0; // 默认分配到该房型的第一个物理房间-->
+<!--            });-->
+
+<!--            // b. 智能防重叠算法：如果同房型时间冲突，自动分配到下一个物理房间-->
+<!--            ['Small Room', 'Medium Room', 'Large Room', 'VIP Room'].forEach(roomType => {-->
+<!--                let bookingsOfType = todaysBookings.filter(b => b.room === roomType);-->
+<!--                if (bookingsOfType.length === 0) return;-->
+
+<!--                // 按开始时间排序，先订先得-->
+<!--                bookingsOfType.sort((a, b) => a._startMins - b._startMins);-->
+
+<!--                let config = roomConfig[roomType];-->
+<!--                if (!config) return;-->
+
+<!--                // 记录该房型下每个物理房间（如 S1, S2）当前的结束时间，初始为 -1-->
+<!--                let columnEnds = new Array(config.maxRooms).fill(-1);-->
+
+<!--                bookingsOfType.forEach(b => {-->
+<!--                    for (let i = 0; i < config.maxRooms; i++) {-->
+<!--                        // 如果这个物理房间在这个时间段是空的 (上一桌客人的结束时间 <= 当前客人的开始时间)-->
+<!--                        if (b._startMins >= columnEnds[i]) {-->
+<!--                            b._assignedSubCol = i;      // 成功分配到这个物理房间-->
+<!--                            columnEnds[i] = b._endMins; // 登记这个房间被占用到的结束时间-->
+<!--                            break;-->
+<!--                        }-->
+<!--                    }-->
+<!--                });-->
+<!--            });-->
+
+<!--            // c. 正式渲染到页面上-->
+<!--            todaysBookings.forEach(b => {-->
+<!--                const config = roomConfig[b.room] || roomConfig["Small Room"]; // 兜底配置-->
+
+<!--                // 计算最终的绝对列号 (0 到 4)-->
+<!--                const finalColumnIndex = config.baseCol + b._assignedSubCol;-->
+
+<!--                const slot = document.createElement('div');-->
+<!--                slot.className = 'uni-booking-block';-->
+
+<!--                slot.style.top = `${b._startMins * PIXELS_PER_MIN}px`;-->
+<!--                slot.style.height = `${(b._endMins - b._startMins) * PIXELS_PER_MIN}px`;-->
+
+<!--                // 🌟 把格子分成 5 份，每份 20%-->
+<!--                slot.style.left = `${finalColumnIndex * 20}%`;-->
+<!--                slot.style.width = `20%`;-->
+<!--                slot.style.backgroundColor = config.color;-->
+
+<!--                // 显示如 [S1], [S2], [M1], [V1], [V2]-->
+<!--                slot.innerHTML = `-->
+<!--                <div style="font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">[${config.label}${b._assignedSubCol + 1}] ${b.name}</div>-->
+<!--                <div>${b.partySize}p</div>-->
+<!--            `;-->
+
+<!--                slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone);-->
+<!--                eventsArea.appendChild(slot);-->
+<!--            });-->
 
 <!--            col.appendChild(eventsArea);-->
-<!--            roomColsContainer.appendChild(col);-->
+<!--            dayColsContainer.appendChild(col);-->
 <!--        });-->
 
-<!--        container.appendChild(roomColsContainer);-->
-
-<!--        // 3. 将预约数据转换为绝对定位的区块！-->
-<!--        bookings.forEach(b => {-->
-<!--            const targetArea = roomEventContainers[b.room];-->
-<!--            if (!targetArea) return; // 找不到对应的房间列就跳过-->
-
-<!--            // 解析时间，你的截图显示时间格式如 "23:00" 或 "21:00"-->
-<!--            let [hh, mm] = b.time.split(':').map(Number);-->
-
-<!--            // 跨天逻辑处理 (比如凌晨 1 点，在我们的坐标系里等于 25 点)-->
-<!--            if (hh < startHour) hh += 24;-->
-
-<!--            // 计算距离 18:00 过去了多少分钟-->
-<!--            const minutesFromStart = ((hh - startHour) * 60) + (mm || 0);-->
-
-<!--            // 解析时长 (支持小数，比如 2.5 小时)-->
-<!--            const durationMinutes = parseFloat(b.duration) * 60;-->
-
-<!--            // 【最核心的计算】：根据分钟算像素高度-->
-<!--            const topPosition = minutesFromStart * PIXELS_PER_MIN;-->
-<!--            const blockHeight = durationMinutes * PIXELS_PER_MIN;-->
-
-<!--            // 创建课表色块-->
-<!--            const slot = document.createElement('div');-->
-<!--            slot.className = 'uni-booking-block';-->
-
-<!--            // 设置绝对定位-->
-<!--            slot.style.top = `${topPosition}px`;-->
-<!--            slot.style.height = `${blockHeight}px`;-->
-
-<!--            // 色块内部的文字排版，模仿大学课表风格-->
-<!--            slot.innerHTML = `-->
-<!--            <div style="font-weight:900;">${b.name}</div>-->
-<!--            <div>${b.date}</div>-->
-<!--            <div>${b.time} - duration: ${b.duration} Hrs</div>-->
-<!--            <div style="margin-top:4px;">👥 ${b.partySize} ppl</div>-->
-<!--        `;-->
-
-<!--            // 点击依然可以编辑-->
-<!--            slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone);-->
-
-<!--            targetArea.appendChild(slot);-->
-<!--        });-->
+<!--        container.appendChild(dayColsContainer);-->
 <!--    }-->
-
-<!--    // 辅助函数：快速创建带 class 和文字的 div-->
-<!--    function createDiv(className, text) {-->
-<!--        const div = document.createElement('div');-->
-<!--        div.className = className;-->
-<!--        div.innerText = text;-->
-
-<!--        // 如果是表头和时间标签，直接在这里加点基础样式防止 CSS 丢失-->
-<!--        if (className === 'grid-header') {-->
-<!--            div.style.background = 'var(&#45;&#45;bg-dark)';-->
-<!--            div.style.display = 'flex';-->
-<!--            div.style.alignItems = 'center';-->
-<!--            div.style.justifyContent = 'center';-->
-<!--            div.style.fontWeight = 'bold';-->
-<!--            div.style.color = 'var(&#45;&#45;primary-blue)';-->
-<!--        } else if (className === 'time-label') {-->
-<!--            div.style.background = 'var(&#45;&#45;bg-dark)';-->
-<!--            div.style.display = 'flex';-->
-<!--            div.style.alignItems = 'center';-->
-<!--            div.style.justifyContent = 'flex-end';-->
-<!--            div.style.paddingRight = '10px';-->
-<!--            div.style.fontSize = '0.8rem';-->
-<!--            div.style.color = 'var(&#45;&#45;text-muted)';-->
-<!--        }-->
-
-<!--        return div;-->
-<!--    }-->
-
-<!--    // 删除单个预约-->
-<!--    async function deleteBooking(id) {-->
-<!--        if(!confirm(`Are you sure you want to delete Booking #${id}? This action cannot be undone.`)) return;-->
-
-<!--        try {-->
-<!--            // const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {-->
-<!--            //     method: 'DELETE',-->
-<!--            //     headers: getAuthHeaders()-->
-<!--            // });-->
-
-<!--            const res = await fetch(`/api/admin/bookings/${id}`, { method: 'DELETE', headers: getAuthHeaders() });-->
-<!--            if (res.ok) {-->
-<!--                loadBookings(); // 删除成功后刷新表格-->
-<!--            } else {-->
-<!--                alert('Failed to delete booking.');-->
-<!--            }-->
-<!--        } catch (error) {-->
-<!--            console.error('Error deleting booking:', error);-->
-<!--            alert('Network error.');-->
-<!--        }-->
-<!--    }-->
-
-<!--    // ======================= API 调用：管理员管理 =======================-->
+<!--    // ======================= API 调用：管理员及弹窗管理 =======================-->
 
 <!--    async function loadAdmins() {-->
 <!--        const tbody = document.getElementById('admins-table-body');-->
 <!--        try {-->
-<!--            // const res = await fetch('http://localhost:3000/api/admin/list', { headers: getAuthHeaders() });、-->
 <!--            const res = await fetch('/api/admin/list', { headers: getAuthHeaders() });-->
 <!--            if(res.status === 401) return handleLogout();-->
 
 <!--            const admins = await res.json();-->
 <!--            tbody.innerHTML = '';-->
-<!--            // 使用 sessionStorage 读取当前用户-->
 <!--            const currentUser = sessionStorage.getItem('currentUser');-->
 
 <!--            admins.forEach(admin => {-->
 <!--                const isMe = admin.username === currentUser;-->
 <!--                const tr = document.createElement('tr');-->
 
-<!--                // 构建操作按钮：不能删自己，但可以改密码-->
-<!--                let actionButtons = `-->
-<!--                        <button class="action-btn btn-primary" onclick="openEditPassModal(${admin.id}, '${admin.username}')">Change Password</button>-->
-<!--                    `;-->
+<!--                let actionButtons = `<button class="action-btn btn-primary" onclick="openEditPassModal(${admin.id}, '${admin.username}')">Change Password</button>`;-->
 <!--                if (!isMe) {-->
 <!--                    actionButtons += `<button class="action-btn btn-danger" onclick="deleteAdmin(${admin.id}, '${admin.username}')">Delete</button>`;-->
 <!--                } else {-->
@@ -633,10 +620,10 @@
 <!--                }-->
 
 <!--                tr.innerHTML = `-->
-<!--                        <td>${admin.id}</td>-->
-<!--                        <td style="font-weight: bold;">${admin.username}</td>-->
-<!--                        <td>${actionButtons}</td>-->
-<!--                    `;-->
+<!--                    <td>${admin.id}</td>-->
+<!--                    <td style="font-weight: bold;">${admin.username}</td>-->
+<!--                    <td>${actionButtons}</td>-->
+<!--                `;-->
 <!--                tbody.appendChild(tr);-->
 <!--            });-->
 <!--        } catch (err) {-->
@@ -649,19 +636,13 @@
 <!--        const newPassword = document.getElementById('new-admin-pass').value.trim();-->
 <!--        if(!newUsername || !newPassword) return alert('Fill all fields');-->
 
-<!--        // const res = await fetch('http://localhost:3000/api/admin/add', {-->
-<!--        //     method: 'POST',-->
-<!--        //     headers: getAuthHeaders(),-->
-<!--        //     body: JSON.stringify({ newUsername, newPassword })-->
-<!--        // });-->
-
 <!--        const res = await fetch('/api/admin/add', {-->
 <!--            method: 'POST', headers: getAuthHeaders(),-->
 <!--            body: JSON.stringify({ newUsername, newPassword })-->
 <!--        });-->
 <!--        if (res.ok) {-->
 <!--            closeModal('add-admin-modal');-->
-<!--            loadAdmins(); // 刷新列表-->
+<!--            loadAdmins();-->
 <!--        } else {-->
 <!--            const data = await res.json();-->
 <!--            alert(data.error);-->
@@ -673,7 +654,7 @@
 <!--        const newPassword = document.getElementById('edit-new-pass').value.trim();-->
 <!--        if(!newPassword) return alert('Enter new password');-->
 
-<!--        const res = await fetch(`http://localhost:3000/api/admin/password/${id}`, {-->
+<!--        const res = await fetch(`/api/admin/password/${id}`, {-->
 <!--            method: 'PUT',-->
 <!--            headers: getAuthHeaders(),-->
 <!--            body: JSON.stringify({ newPassword })-->
@@ -689,16 +670,10 @@
 
 <!--    async function deleteAdmin(id, username) {-->
 <!--        if(!confirm(`Are you sure you want to permanently delete admin: ${username}?`)) return;-->
-
-<!--        const res = await fetch(`http://localhost:3000/api/admin/delete/${id}`, {-->
-<!--            method: 'DELETE',-->
-<!--            headers: getAuthHeaders()-->
-<!--        });-->
-
+<!--        const res = await fetch(`/api/admin/delete/${id}`, { method: 'DELETE', headers: getAuthHeaders() });-->
 <!--        if (res.ok) loadAdmins();-->
 <!--    }-->
 
-<!--    // ======================= 弹窗控制逻辑 =======================-->
 <!--    function openAddAdminModal() {-->
 <!--        document.getElementById('new-admin-user').value = '';-->
 <!--        document.getElementById('new-admin-pass').value = '';-->
@@ -716,7 +691,6 @@
 <!--        document.getElementById(modalId).style.display = 'none';-->
 <!--    }-->
 
-<!--    // 打开编辑订单的弹窗，并自动填入当前数据-->
 <!--    function openEditBookingModal(id, room, partySize, date, time, duration, name, phone) {-->
 <!--        document.getElementById('edit-b-id-display').innerText = id;-->
 <!--        document.getElementById('edit-b-id').value = id;-->
@@ -731,43 +705,8 @@
 <!--        document.getElementById('edit-booking-modal').style.display = 'flex';-->
 <!--    }-->
 
-<!--    // 提交修改到后端-->
-<!--    // async function submitEditBooking() {-->
-<!--    //     const id = document.getElementById('edit-b-id').value;-->
-<!--    //     const updatedData = {-->
-<!--    //         room: document.getElementById('edit-b-room').value,-->
-<!--    //         partySize: document.getElementById('edit-b-party').value,-->
-<!--    //         date: document.getElementById('edit-b-date').value,-->
-<!--    //         time: document.getElementById('edit-b-time').value,-->
-<!--    //         duration: document.getElementById('edit-b-duration').value,-->
-<!--    //         name: document.getElementById('edit-b-name').value,-->
-<!--    //         phone: document.getElementById('edit-b-phone').value-->
-<!--    //     };-->
-<!--    //-->
-<!--    //     try {-->
-<!--    //         // const res = await fetch(`http://localhost:3000/api/admin/bookings/${id}`, {-->
-<!--    //         //     method: 'PUT',-->
-<!--    //         //     headers: getAuthHeaders(),-->
-<!--    //         //     body: JSON.stringify(updatedData)-->
-<!--    //         // });-->
-<!--    //         const res = await fetch(`/api/admin/bookings/${id}`, {-->
-<!--    //             method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)-->
-<!--    //         });-->
-<!--    //-->
-<!--    //         if (res.ok) {-->
-<!--    //             closeModal('edit-booking-modal');-->
-<!--    //             loadBookings(); // 修改成功后刷新表格，就能看到新数据了-->
-<!--    //         } else {-->
-<!--    //             alert('Failed to update booking.');-->
-<!--    //         }-->
-<!--    //     } catch (error) {-->
-<!--    //         console.error('Error updating booking:', error);-->
-<!--    //         alert('Network error.');-->
-<!--    //     }-->
-<!--    // }-->
 <!--    async function submitEditBooking() {-->
 <!--        const id = document.getElementById('edit-b-id').value;-->
-<!--        // 建议统一使用 'data' 或者把下面改为 'updatedData'-->
 <!--        const data = {-->
 <!--            room: document.getElementById('edit-b-room').value,-->
 <!--            partySize: document.getElementById('edit-b-party').value,-->
@@ -782,7 +721,7 @@
 <!--            const res = await fetch(`/api/admin/bookings/${id}`, {-->
 <!--                method: 'PUT',-->
 <!--                headers: getAuthHeaders(),-->
-<!--                body: JSON.stringify(data) // ✅ 现在 data 有定义了-->
+<!--                body: JSON.stringify(data)-->
 <!--            });-->
 
 <!--            if (res.ok) {-->
@@ -793,82 +732,13 @@
 <!--                alert('Failed: ' + (errData.error || 'Unknown error'));-->
 <!--            }-->
 <!--        } catch (error) {-->
-<!--            console.error('Real error:', error); // 在控制台打印真实的错误对象-->
+<!--            console.error('Real error:', error);-->
 <!--            alert('Check console for details.');-->
 <!--        }-->
 <!--    }-->
-
-<!--    // // 核心逻辑：将预约数据渲染成时间表-->
-<!--    // function generateTimetable(bookings) {-->
-<!--    //     const container = document.getElementById('timetable-container');-->
-<!--    //     container.innerHTML = ''; // 清空-->
-<!--    //-->
-<!--    //     // 1. 定义房间和时间的映射-->
-<!--    //     const rooms = ["Small Room", "Medium Room", "Large Room"];-->
-<!--    //     const startHour = 18; // 晚上 6 点开始营业 (18:00)-->
-<!--    //     const totalHours = 9;  // 营业到凌晨 3 点-->
-<!--    //-->
-<!--    //     // 2. 渲染表头 (第一行)-->
-<!--    //     container.appendChild(createDiv('time-label', '')); // 左上角空白-->
-<!--    //     rooms.forEach(room => {-->
-<!--    //         container.appendChild(createDiv('grid-header', room));-->
-<!--    //     });-->
-<!--    //-->
-<!--    //     // 3. 渲染时间轴和空白格子-->
-<!--    //     for (let i = 0; i < totalHours; i++) {-->
-<!--    //         let displayHour = (startHour + i) % 24;-->
-<!--    //         let timeText = `${displayHour > 12 ? displayHour - 12 : displayHour}:00 ${displayHour >= 12 ? 'PM' : 'AM'}`;-->
-<!--    //-->
-<!--    //         container.appendChild(createDiv('time-label', timeText));-->
-<!--    //-->
-<!--    //         // 为每个房间渲染这一小时的底色格子-->
-<!--    //         rooms.forEach(() => {-->
-<!--    //             const cell = document.createElement('div');-->
-<!--    //             cell.style.background = 'var(&#45;&#45;bg-dark)';-->
-<!--    //             container.appendChild(cell);-->
-<!--    //         });-->
-<!--    //     }-->
-<!--    //-->
-<!--    //     // 4. 放置真实的预约块-->
-<!--    //     bookings.forEach(b => {-->
-<!--    //         // 计算列索引 (Small=2, Medium=3, Large=4)-->
-<!--    //         const colIndex = rooms.indexOf(b.room) + 2;-->
-<!--    //-->
-<!--    //         // 计算行索引 (假设 b.time 是 "7:00 PM" 这种格式)-->
-<!--    //         const hour = parseInt(b.time.split(':')[0]);-->
-<!--    //         const isPM = b.time.toLowerCase().includes('pm');-->
-<!--    //         let hour24 = isPM && hour !== 12 ? hour + 12 : (!isPM && hour === 12 ? 0 : hour);-->
-<!--    //-->
-<!--    //         // 如果是凌晨，加 24 处理跨天逻辑-->
-<!--    //         if (hour24 < startHour) hour24 += 24;-->
-<!--    //-->
-<!--    //         const rowStart = (hour24 - startHour) + 2; // +2 因为第一行是表头-->
-<!--    //         const rowSpan = parseInt(b.duration);-->
-<!--    //-->
-<!--    //         // 创建预约块-->
-<!--    //         const slot = document.createElement('div');-->
-<!--    //         slot.className = 'booking-slot';-->
-<!--    //         slot.innerHTML = `<strong>${b.name}</strong><br>${b.partySize}p`;-->
-<!--    //-->
-<!--    //         // 使用 CSS Grid 魔法定位-->
-<!--    //         slot.style.gridColumn = colIndex;-->
-<!--    //         slot.style.gridRow = `${rowStart} / span ${rowSpan}`;-->
-<!--    //-->
-<!--    //         container.appendChild(slot);-->
-<!--    //     });-->
-<!--    // }-->
-
-<!--    // // 辅助函数-->
-<!--    // function createDiv(className, text) {-->
-<!--    //     const div = document.createElement('div');-->
-<!--    //     div.className = className;-->
-<!--    //     div.innerText = text;-->
-<!--    //     return div;-->
-<!--    // }-->
 <!--</script>-->
 <!--</body>-->
 <!--</html>-->
-
 
 <!DOCTYPE html>
 <html lang="en">
@@ -924,6 +794,7 @@
                 <th>Party Size</th>
                 <th>Customer Name</th>
                 <th>Phone</th>
+                <th>Deposit</th>
                 <th>Actions</th>
             </tr>
             </thead>
@@ -999,8 +870,7 @@
 </div>
 
 <div id="edit-booking-modal" class="modal-overlay">
-    <div class="modal-content" style="max-width: 500px;">
-        <h3>Edit Booking #<span id="edit-b-id-display"></span></h3>
+    <div class="modal-content" style="max-width: 600px;"> <h3>Edit Booking #<span id="edit-b-id-display"></span></h3>
         <input type="hidden" id="edit-b-id">
 
         <div style="display: flex; gap: 10px;">
@@ -1042,6 +912,13 @@
             <div class="input-group" style="flex: 1;">
                 <label>Phone</label>
                 <input type="text" id="edit-b-phone" class="neon-input">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label style="color: #10B981;">Deposit Paid?</label>
+                <select id="edit-b-deposit" class="neon-input" style="background-color: rgba(17, 24, 39, 0.9); border-color: #10B981;">
+                    <option value="No">No 🔴</option>
+                    <option value="Yes">Yes 🟢</option>
+                </select>
             </div>
         </div>
 
@@ -1126,7 +1003,7 @@
 
     async function loadBookings() {
         const tbody = document.getElementById('bookings-table-body');
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align: center;">Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Loading...</td></tr>';
 
         try {
             const res = await fetch('/api/admin/bookings', { headers: getAuthHeaders() });
@@ -1135,7 +1012,7 @@
             const result = await res.json();
 
             if (result.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; color: var(--text-muted);">No bookings found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No bookings found.</td></tr>';
                 allBookingsData = [];
                 renderWeeklyTimetable(); // 清空并渲染空的周历
                 return;
@@ -1147,6 +1024,13 @@
             tbody.innerHTML = '';
             result.data.forEach(b => {
                 const tr = document.createElement('tr');
+
+                // 🌟 渲染红绿押金标签 (兼容旧数据，如果是 undefined 默认是 No)
+                const isPaid = (b.deposit === 'Yes');
+                const depositBadge = isPaid
+                    ? `<span style="background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">Paid</span>`
+                    : `<span style="background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">No</span>`;
+
                 tr.innerHTML = `
                     <td>#${b.id}</td>
                     <td style="color: var(--primary-blue); font-weight: bold;">${b.date} <br> ${b.time}</td>
@@ -1155,8 +1039,9 @@
                     <td>${b.partySize}</td>
                     <td>${b.name}</td>
                     <td>${b.phone}</td>
+                    <td>${depositBadge}</td>
                     <td>
-                        <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${b.room}', '${b.partySize}', '${b.date}', '${b.time}', '${b.duration}', '${b.name}', '${b.phone}')">Edit</button>
+                        <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${b.room}', '${b.partySize}', '${b.date}', '${b.time}', '${b.duration}', '${b.name}', '${b.phone}', '${b.deposit || 'No'}')">Edit</button>
                         <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>
                     </td>
                 `;
@@ -1167,7 +1052,7 @@
             renderWeeklyTimetable();
 
         } catch (err) {
-            tbody.innerHTML = '<tr><td colspan="8" style="color: red;">Failed to load data.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="9" style="color: red;">Failed to load data.</td></tr>';
             console.error("加载数据失败:", err);
         }
     }
@@ -1200,120 +1085,6 @@
         const d = String(dateObj.getDate()).padStart(2, '0');
         return `${y}-${m}-${d}`;
     }
-
-    // function renderWeeklyTimetable() {
-    //     const container = document.getElementById('timetable-container');
-    //     if (!container) return;
-    //     container.innerHTML = '';
-    //
-    //     // 1. 计算当前视图的 7 天日期
-    //     const today = new Date();
-    //     const currentDayOfWeek = today.getDay() || 7;
-    //     const startOfWeek = new Date(today);
-    //     startOfWeek.setDate(today.getDate() - currentDayOfWeek + 1 + (currentWeekOffset * 7));
-    //
-    //     const weekDaysInfo = [];
-    //     const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    //
-    //     for (let i = 0; i < 7; i++) {
-    //         const d = new Date(startOfWeek);
-    //         d.setDate(startOfWeek.getDate() + i);
-    //         weekDaysInfo.push({
-    //             dateObj: d,
-    //             dateStr: formatDateStr(d),
-    //             dayName: dayNames[i]
-    //         });
-    //     }
-    //
-    //     const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    //     document.getElementById('week-display').innerText = `Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}`;
-    //
-    //     // 2. 营业时间设置
-    //     const startHour = 18; // 18:00
-    //     const totalHours = 9; // 9个小时
-    //     const PIXELS_PER_MIN = 1; // 1分钟 = 1像素
-    //
-    //     // 3. 构建左侧时间轴
-    //     const timeCol = document.createElement('div');
-    //     timeCol.className = 'uni-time-col';
-    //     for (let i = 0; i < totalHours; i++) {
-    //         let displayHour = (startHour + i) % 24;
-    //         let ampm = displayHour >= 12 && displayHour < 24 ? 'PM' : 'AM';
-    //         let hour12 = displayHour > 12 ? displayHour - 12 : (displayHour === 0 ? 12 : displayHour);
-    //
-    //         const timeLabel = document.createElement('div');
-    //         timeLabel.className = 'uni-time-label';
-    //         timeLabel.innerText = `${hour12}:00 ${ampm}`;
-    //         timeCol.appendChild(timeLabel);
-    //     }
-    //     container.appendChild(timeCol);
-    //
-    //     // 4. 构建右侧 7 天的列
-    //     const dayColsContainer = document.createElement('div');
-    //     dayColsContainer.className = 'uni-day-cols';
-    //
-    //     const roomLayout = {
-    //         "Small Room":  { left: "0%", width: "33%", color: "#3B82F6", label: "S" },   // 蓝色
-    //         "Medium Room": { left: "33%", width: "33%", color: "#10B981", label: "M" },  // 绿色
-    //         "Large Room":  { left: "66%", width: "33%", color: "#F59E0B", label: "V" }   // 橙色
-    //     };
-    //
-    //     weekDaysInfo.forEach(dayInfo => {
-    //         const col = document.createElement('div');
-    //         col.className = 'uni-day-col';
-    //
-    //         const header = document.createElement('div');
-    //         header.className = 'uni-day-header';
-    //
-    //         if (dayInfo.dateStr === formatDateStr(new Date())) {
-    //             header.style.borderTop = "3px solid var(--primary-blue)";
-    //             header.style.backgroundColor = "rgba(59, 130, 246, 0.1)";
-    //         }
-    //
-    //         header.innerHTML = `<span class="day-name">${dayInfo.dayName}</span><span class="day-date">${dayInfo.dateStr.slice(5)}</span>`;
-    //         col.appendChild(header);
-    //
-    //         const eventsArea = document.createElement('div');
-    //         eventsArea.className = 'uni-day-events';
-    //
-    //         // 5. 过滤出这一天的所有预约并渲染
-    //         const todaysBookings = allBookingsData.filter(b => b.date === dayInfo.dateStr);
-    //
-    //         todaysBookings.forEach(b => {
-    //             const layout = roomLayout[b.room] || roomLayout["Small Room"];
-    //
-    //             let [hh, mm] = b.time.split(':').map(Number);
-    //             if (b.time.toLowerCase().includes('pm') && hh !== 12) hh += 12;
-    //             if (b.time.toLowerCase().includes('am') && hh === 12) hh = 0;
-    //             if (hh < startHour) hh += 24;
-    //
-    //             const minutesFromStart = ((hh - startHour) * 60) + (mm || 0);
-    //             const durationMinutes = parseFloat(b.duration) * 60;
-    //
-    //             const slot = document.createElement('div');
-    //             slot.className = 'uni-booking-block';
-    //
-    //             slot.style.top = `${minutesFromStart * PIXELS_PER_MIN}px`;
-    //             slot.style.height = `${durationMinutes * PIXELS_PER_MIN}px`;
-    //             slot.style.left = layout.left;
-    //             slot.style.width = layout.width;
-    //             slot.style.backgroundColor = layout.color;
-    //
-    //             slot.innerHTML = `
-    //                 <div style="font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">[${layout.label}] ${b.name}</div>
-    //                 <div>${b.partySize}p</div>
-    //             `;
-    //
-    //             slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone);
-    //             eventsArea.appendChild(slot);
-    //         });
-    //
-    //         col.appendChild(eventsArea);
-    //         dayColsContainer.appendChild(col);
-    //     });
-    //
-    //     container.appendChild(dayColsContainer);
-    // }
 
     function renderWeeklyTimetable() {
         const container = document.getElementById('timetable-container');
@@ -1387,15 +1158,15 @@
             // 5. 过滤出这一天的所有预约
             const todaysBookings = allBookingsData.filter(b => b.date === dayInfo.dateStr);
 
-            // 🌟 核心升级：定义 5 个物理房间的轨道配置 (总共分 5 列，每列 20%)
+            // 🌟 物理房间轨道配置
             const roomConfig = {
-                "Small Room":  { baseCol: 0, maxRooms: 2, color: "#3B82F6", label: "S" }, // 占第 0, 1 列 (2个小包)
-                "Medium Room": { baseCol: 2, maxRooms: 1, color: "#10B981", label: "M" }, // 占第 2 列 (1个中包)
-                "Large Room":  { baseCol: 3, maxRooms: 2, color: "#F59E0B", label: "V" }, // 占第 3, 4 列 (兼容你的 Large Room)
-                "VIP Room":    { baseCol: 3, maxRooms: 2, color: "#F59E0B", label: "V" }  // 占第 3, 4 列 (兼容叫 VIP Room 的情况)
+                "Small Room":  { baseCol: 0, maxRooms: 2, color: "#3B82F6", label: "S" },
+                "Medium Room": { baseCol: 2, maxRooms: 1, color: "#10B981", label: "M" },
+                "Large Room":  { baseCol: 3, maxRooms: 2, color: "#F59E0B", label: "V" },
+                "VIP Room":    { baseCol: 3, maxRooms: 2, color: "#F59E0B", label: "V" }
             };
 
-            // a. 预处理：计算每个订单的精确起始和结束分钟数
+            // a. 预处理
             todaysBookings.forEach(b => {
                 let [hh, mm] = b.time.split(':').map(Number);
                 if (b.time.toLowerCase().includes('pm') && hh !== 12) hh += 12;
@@ -1404,40 +1175,35 @@
 
                 b._startMins = ((hh - startHour) * 60) + (mm || 0);
                 b._endMins = b._startMins + (parseFloat(b.duration) * 60);
-                b._assignedSubCol = 0; // 默认分配到该房型的第一个物理房间
+                b._assignedSubCol = 0;
             });
 
-            // b. 智能防重叠算法：如果同房型时间冲突，自动分配到下一个物理房间
+            // b. 防重叠算法
             ['Small Room', 'Medium Room', 'Large Room', 'VIP Room'].forEach(roomType => {
                 let bookingsOfType = todaysBookings.filter(b => b.room === roomType);
                 if (bookingsOfType.length === 0) return;
 
-                // 按开始时间排序，先订先得
                 bookingsOfType.sort((a, b) => a._startMins - b._startMins);
 
                 let config = roomConfig[roomType];
                 if (!config) return;
 
-                // 记录该房型下每个物理房间（如 S1, S2）当前的结束时间，初始为 -1
                 let columnEnds = new Array(config.maxRooms).fill(-1);
 
                 bookingsOfType.forEach(b => {
                     for (let i = 0; i < config.maxRooms; i++) {
-                        // 如果这个物理房间在这个时间段是空的 (上一桌客人的结束时间 <= 当前客人的开始时间)
                         if (b._startMins >= columnEnds[i]) {
-                            b._assignedSubCol = i;      // 成功分配到这个物理房间
-                            columnEnds[i] = b._endMins; // 登记这个房间被占用到的结束时间
+                            b._assignedSubCol = i;
+                            columnEnds[i] = b._endMins;
                             break;
                         }
                     }
                 });
             });
 
-            // c. 正式渲染到页面上
+            // c. 渲染到页面上
             todaysBookings.forEach(b => {
-                const config = roomConfig[b.room] || roomConfig["Small Room"]; // 兜底配置
-
-                // 计算最终的绝对列号 (0 到 4)
+                const config = roomConfig[b.room] || roomConfig["Small Room"];
                 const finalColumnIndex = config.baseCol + b._assignedSubCol;
 
                 const slot = document.createElement('div');
@@ -1446,18 +1212,17 @@
                 slot.style.top = `${b._startMins * PIXELS_PER_MIN}px`;
                 slot.style.height = `${(b._endMins - b._startMins) * PIXELS_PER_MIN}px`;
 
-                // 🌟 把格子分成 5 份，每份 20%
                 slot.style.left = `${finalColumnIndex * 20}%`;
                 slot.style.width = `20%`;
                 slot.style.backgroundColor = config.color;
 
-                // 显示如 [S1], [S2], [M1], [V1], [V2]
                 slot.innerHTML = `
                 <div style="font-weight:bold; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">[${config.label}${b._assignedSubCol + 1}] ${b.name}</div>
                 <div>${b.partySize}p</div>
             `;
 
-                slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone);
+                // 🌟 把 deposit 也传进去，让用户点击周历块也能在弹窗里看到押金状态
+                slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone, b.deposit || 'No');
                 eventsArea.appendChild(slot);
             });
 
@@ -1562,7 +1327,8 @@
         document.getElementById(modalId).style.display = 'none';
     }
 
-    function openEditBookingModal(id, room, partySize, date, time, duration, name, phone) {
+    // 🌟 修改：接收 deposit 参数，并展示在 UI 上
+    function openEditBookingModal(id, room, partySize, date, time, duration, name, phone, deposit) {
         document.getElementById('edit-b-id-display').innerText = id;
         document.getElementById('edit-b-id').value = id;
         document.getElementById('edit-b-room').value = room;
@@ -1572,6 +1338,9 @@
         document.getElementById('edit-b-duration').value = duration;
         document.getElementById('edit-b-name').value = name;
         document.getElementById('edit-b-phone').value = phone;
+
+        // 设置押金状态 (如果是旧数据可能会是 undefined，所以用 || 'No' 兜底)
+        document.getElementById('edit-b-deposit').value = deposit || 'No';
 
         document.getElementById('edit-booking-modal').style.display = 'flex';
     }
@@ -1585,7 +1354,9 @@
             time: document.getElementById('edit-b-time').value,
             duration: document.getElementById('edit-b-duration').value,
             name: document.getElementById('edit-b-name').value,
-            phone: document.getElementById('edit-b-phone').value
+            phone: document.getElementById('edit-b-phone').value,
+            // 🌟 获取管理员选择的押金状态
+            deposit: document.getElementById('edit-b-deposit').value
         };
 
         try {

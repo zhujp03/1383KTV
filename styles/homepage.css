@@ -79,7 +79,7 @@ section {
     max-width: 1600px;
     margin: 0 auto;
     /* 重要：因为导航栏固定在顶部，这里留出100px的滚动边距，防止锚点跳转时标题被遮挡 */
-    scroll-margin-top: 300px;
+    scroll-margin-top: 120px;
 }
 
 section h2 {
@@ -233,6 +233,7 @@ section h2 {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 30px;
+    scroll-margin-top: 300px;
 }
 
 .room-card {
@@ -249,34 +250,16 @@ section h2 {
     border-color: var(--primary-blue);
 }
 
-/*.room-img-placeholder {*/
-/*    height: 250px;*/
-/*    background-color: rgba(0,0,0,0.5);*/
-/*    display: flex; align-items: center; justify-content: center;*/
-/*    color: var(--text-muted);*/
-/*}*/
-/* =========================================
-   6. 包厢展示区 (Rooms Section) - 补充与修正
-   ========================================= */
-
-/* 真实的包厢图片样式 */
 .room-img {
     width: 100%;
-    height: 250px; /* 固定高度，让三张卡片一样高 */
-
-    /* 🌟 核心魔法属性：object-fit 🌟 */
+    height: 250px;
     object-fit: cover;
-    /* cover 的意思是：让图片填满这个 100%x250px 的区域，
-       保持原图比例不变，为了填满，图片的多余边缘可能会被自动裁剪掉。
-       这通常是卡片图片的最佳选择。 */
-
-    display: block; /* 消除 img 底部的默认空隙 */
-    transition: transform 0.5s ease; /* 为悬停效果加个动画 */
+    display: block;
+    transition: transform 0.5s ease;
 }
 
-/* 进阶效果：鼠标悬停在卡片上时，图片微微放大，非常有高级感 */
 .room-card:hover .room-img {
-    transform: scale(1.05); /* 微微放大图片 */
+    transform: scale(1.05);
 }
 
 .room-info {
@@ -372,13 +355,14 @@ section h2 {
 }
 
 /* =========================================
-   8. 菜单区 (Food & Drinks Menu) - 4张图片网格
+   8. 菜单区 (Food & Drinks Menu)
    ========================================= */
 .menu-grid-container {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
     gap: 40px;
-    margin-top: 30px;
+    margin-top: 120px;
+    scroll-margin-top: 50px;
 }
 
 .menu-item {
@@ -417,7 +401,6 @@ section h2 {
     pointer-events: none;
 }
 
-/* 当真实的图片加载成功并覆盖在上面时，隐藏占位文字 */
 .menu-item img[src]:not([src=""]) + .menu-placeholder-text {
     display: none;
 }
@@ -429,10 +412,6 @@ section h2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 40px;
-}
-
-@media (max-width: 900px) {
-    .visit-grid { grid-template-columns: 1fr; }
 }
 
 .contact-info {
@@ -508,99 +487,202 @@ footer {
     font-size: 0.9rem;
     margin-top: 50px;
 }
+
 /* =========================================
    📱 移动端适配 (手机专用样式)
    ========================================= */
 @media (max-width: 768px) {
-    /* 1. 让原本并排的容器变成上下排列 */
-    .rooms-grid, .features-grid, .menu-grid-container {
+    /* 1. 修复文字被遮挡：给第一屏增加足够的顶部内边距 */
+    .hero {
+        padding-top: 150px;
+        text-align: center;
+    }
+
+    .hero-content {
+        margin: 0 auto;
+    }
+
+    /* 2. 缩小标题字体，适应手机屏幕 */
+    .hero-title {
+        font-size: 2.8rem;
+        margin-bottom: 10px;
+    }
+
+    .hero-subtitle {
+        font-size: 1rem;
+        letter-spacing: 1px;
+    }
+
+    /* 3. 重新排列按钮，取消 100% 宽度，让它们换行显示 */
+    .hero-buttons {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 15px;
+    }
+
+    .btn-primary, .btn-secondary {
+        width: auto !important;
+        padding: 10px 20px;
+        font-size: 0.95rem;
+    }
+
+    /* 4. 让网格布局在手机上变成上下排列 */
+    .rooms-grid, .features-grid, .menu-grid-container, .visit-grid {
         display: flex;
-        flex-direction: column; /* 垂直排列 */
+        flex-direction: column;
         gap: 20px;
     }
 
-    /* 2. 让表格支持左右滑动 (关键！手机放不下长表格) */
+    /* 5. 表格支持横向滑动 */
     .admin-table {
         display: block;
-        overflow-x: auto; /* 允许横向滚动 */
-        white-space: nowrap; /* 防止内容折行 */
+        overflow-x: auto;
+        white-space: nowrap;
     }
 
-    /* 3. 调整文字大小和边距 */
-    .hero-title {
-        font-size: 1.8rem; /* 电脑端可能很大，手机端要调小 */
-    }
-
-    .navbar {
-        padding: 10px 20px;
-        flex-direction: column; /* 导航栏 Logo 和 菜单上下排 */
-    }
-
-    .nav-links {
-        margin-top: 10px;
-        gap: 10px;
-    }
-
-    /* 4. 调整弹窗宽度 */
+    /* 6. 弹窗宽度适配 */
     .modal-content {
-        width: 90%; /* 手机端弹窗占满 90% 宽度 */
+        width: 90%;
         padding: 20px;
-    }
-
-    /* 5. 让按钮更容易被手指点击 */
-    .btn-primary, .btn-secondary {
-        width: 100%; /* 按钮占满一行 */
-        padding: 15px;
-        font-size: 1.1rem;
     }
 }
 
 /* =========================================
-   📱 移动端导航栏修复
+   📱 移动端导航栏修复 (600px 以下)
    ========================================= */
 @media (max-width: 600px) {
-    /* 1. 让导航栏容器支持垂直布局 */
+    /* 1. 导航栏布局 */
     .navbar, .top-nav {
-        flex-direction: column; /* Logo 和 菜单上下排 */
+        flex-direction: column;
         padding: 15px 10px !important;
-        height: auto !important; /* 取消固定高度 */
+        height: auto !important;
     }
 
-    /* 2. 让 Logo 居中并增加间距 */
+    /* 2. Logo 居中 */
     .logo {
         margin-bottom: 15px;
         font-size: 1.2rem;
         text-align: center;
     }
 
-    /* 3. 核心：让三个按钮均匀分布，不拥挤 */
+    /* 3. 菜单项均匀分布 */
     nav ul, .nav-links {
         display: flex;
         justify-content: center;
-        flex-wrap: wrap; /* 空间不够自动换行 */
-        gap: 15px;      /* 链接之间的间距 */
+        flex-wrap: wrap;
+        gap: 10px;
         padding: 0;
         margin: 0;
         list-style: none;
     }
 
-    /* 4. 调整链接文字大小，适合手指点击 */
+    /* 4. 菜单文字缩小 */
     nav ul li a, .nav-links a {
-        font-size: 0.9rem !important; /* 稍微调小一点点 */
-        padding: 5px 10px;
+        font-size: 0.85rem !important;
+        padding: 5px 8px;
         margin: 0 !important;
-        white-space: nowrap; /* 防止文字内部换行 */
     }
+    .hero {
+        padding-top: 220px !important; /* 强制把内容往下推 220px */
+    }
+}
 
-    /* 5. 顺便修复一下你截图里搜索框的宽度 */
-    .search-box {
-        flex-direction: column; /* 输入框和按钮在手机上上下排 */
+/* =========================================
+   11. 菜单全屏查看器 (Lightbox)
+   ========================================= */
+.lightbox-overlay {
+    display: none; /* 默认隐藏 */
+    position: fixed;
+    z-index: 9999;
+    padding-top: 50px;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.9); /* 半透明黑底 */
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+}
+
+/* 放大后的图片 */
+#lightbox-img {
+    max-width: 90%;
+    max-height: 85vh;
+    border-radius: 8px;
+    box-shadow: 0 0 30px rgba(59, 146, 255, 0.3);
+    object-fit: contain;
+    animation: fadeIn 0.3s;
+}
+
+/* 关闭按钮 (右上角 X) */
+.lightbox-close {
+    position: absolute;
+    top: 20px;
+    right: 35px;
+    color: #f1f1f1;
+    font-size: 40px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+    z-index: 10000;
+}
+
+.lightbox-close:hover,
+.lightbox-close:focus {
+    color: var(--primary-blue);
+    text-decoration: none;
+    cursor: pointer;
+}
+
+/* 左右切换箭头 */
+.lightbox-prev, .lightbox-next {
+    cursor: pointer;
+    position: absolute;
+    top: 50%;
+    width: auto;
+    padding: 16px;
+    margin-top: -50px;
+    color: white;
+    font-weight: bold;
+    font-size: 30px;
+    transition: 0.3s ease;
+    border-radius: 0 3px 3px 0;
+    user-select: none;
+    -webkit-user-select: none;
+    background-color: rgba(0, 0, 0, 0.5);
+    border: none;
+}
+
+.lightbox-prev {
+    left: 10px;
+    border-radius: 8px;
+}
+
+.lightbox-next {
+    right: 10px;
+    border-radius: 8px;
+}
+
+.lightbox-prev:hover, .lightbox-next:hover {
+    background-color: var(--primary-blue);
+}
+
+/* 图片渐入动画 */
+@keyframes fadeIn {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+/* 手机端适配：箭头稍微变小一点 */
+@media (max-width: 768px) {
+    .lightbox-prev, .lightbox-next {
+        padding: 10px;
+        font-size: 20px;
+    }
+    #lightbox-img {
         width: 100%;
-        padding: 0 20px;
-    }
-
-    .neon-input, .search-box .btn-primary {
-        width: 100% !important; /* 宽度占满手机屏幕 */
-        margin-bottom: 10px;
+        max-width: 100%;
+        border-radius: 0;
     }
 }
