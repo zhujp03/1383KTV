@@ -79,7 +79,7 @@ section {
     max-width: 1600px;
     margin: 0 auto;
     /* 重要：因为导航栏固定在顶部，这里留出100px的滚动边距，防止锚点跳转时标题被遮挡 */
-    scroll-margin-top: 100px;
+    scroll-margin-top: 300px;
 }
 
 section h2 {
