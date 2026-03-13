@@ -1,0 +1,237 @@
+/* =========================================
+   1. 基础重置与变量
+   ========================================= */
+:root {
+    --bg-dark: #070B14;
+    --card-bg: rgba(17, 24, 39, 0.6);
+    --primary-blue: #3B82F6;
+    --text-main: #F9FAFB;
+    --text-muted: #9CA3AF;
+    --border-color: rgba(255, 255, 255, 0.1);
+    --danger-color: #EF4444;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+    position: relative;
+    /* 禁用双击放大 */
+    touch-action: manipulation;
+}
+
+/* =========================================
+   2. 呼吸光斑背景 (复用主页效果)
+   ========================================= */
+.background-glow-1 {
+    position: fixed; top: -10%; right: -10%;
+    width: 65vw; height: 65vw;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+    filter: blur(90px); z-index: -1; border-radius: 50%;
+}
+.background-glow-2 {
+    position: fixed; bottom: -15%; left: -15%;
+    width: 75vw; height: 75vw;
+    background: radial-gradient(circle, rgba(255, 42, 109, 0.1) 0%, transparent 70%);
+    filter: blur(120px); z-index: -1; border-radius: 50%;
+}
+
+/* =========================================
+   3. 导航栏 (复用全局导航栏)
+   ========================================= */
+.top-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 40px;
+    background-color: rgba(7, 11, 20, 0.85);
+    backdrop-filter: blur(15px);
+    border-bottom: 1px solid var(--border-color);
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 1000;
+}
+.logo { font-size: 1.5rem; font-weight: bold; color: #fff; letter-spacing: 1px; }
+.nav-links { display: flex; gap: 20px; }
+.nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; font-weight: 600; transition: 0.3s; letter-spacing: 1px;}
+.nav-links a:hover, .nav-links a.active { color: #fff; }
+
+/* =========================================
+   4. Policy 页面主容器
+   ========================================= */
+.legal-container {
+    max-width: 900px;
+    margin: 140px auto 60px auto; /* 顶部留出导航栏的距离 */
+    padding: 0 20px;
+}
+
+.header-section {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.page-title {
+    font-size: 3rem;
+    color: var(--primary-blue);
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+}
+
+.page-subtitle {
+    font-size: 1.2rem;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+}
+
+/* =========================================
+   5. 玻璃态条款卡片
+   ========================================= */
+.policy-card {
+    background-color: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 50px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+.policy-section {
+    margin-bottom: 40px;
+}
+
+.policy-section:last-of-type {
+    margin-bottom: 0;
+}
+
+.policy-section h3 {
+    font-size: 1.4rem;
+    color: #fff;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 10px;
+}
+
+.policy-section h3 span {
+    color: var(--primary-blue);
+    font-weight: 900;
+}
+
+.policy-section ul {
+    list-style: none;
+    padding-left: 10px;
+}
+
+.policy-section ul li {
+    position: relative;
+    padding-left: 25px;
+    margin-bottom: 12px;
+    color: var(--text-muted);
+    font-size: 1.05rem;
+    line-height: 1.7;
+}
+
+.policy-section ul li::before {
+    content: '✦';
+    position: absolute;
+    left: 0;
+    top: 2px;
+    color: var(--primary-blue);
+    font-size: 0.9rem;
+}
+
+.policy-section ul li strong {
+    color: #fff;
+}
+
+/* =========================================
+   6. 免责声明 (Warning Box)
+   ========================================= */
+.disclaimer-box {
+    margin-top: 50px;
+    background-color: rgba(239, 68, 68, 0.1);
+    border-left: 4px solid var(--danger-color);
+    padding: 20px 25px;
+    border-radius: 0 8px 8px 0;
+}
+
+.disclaimer-box h4 {
+    color: var(--danger-color);
+    font-size: 1.2rem;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.disclaimer-box p {
+    color: var(--text-muted);
+    font-size: 1rem;
+    line-height: 1.6;
+}
+
+/* =========================================
+   7. 页脚
+   ========================================= */
+footer {
+    text-align: center;
+    padding: 30px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* =========================================
+   📱 移动端适配
+   ========================================= */
+@media (max-width: 768px) {
+    .top-nav {
+        flex-direction: column;
+        padding: 15px !important;
+    }
+    .logo {
+        margin-bottom: 10px;
+        text-align: center;
+    }
+    .nav-links {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 12px;
+    }
+    .nav-links a {
+        font-size: 0.8rem;
+    }
+
+    .legal-container {
+        margin-top: 160px; /* 避开折行的手机端导航栏 */
+    }
+
+    .page-title {
+        font-size: 2.2rem;
+    }
+
+    .policy-card {
+        padding: 25px 20px;
+    }
+
+    .policy-section h3 {
+        font-size: 1.2rem;
+    }
+
+    .policy-section ul li {
+        font-size: 0.95rem;
+    }
+}
