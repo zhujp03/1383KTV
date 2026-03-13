@@ -2,7 +2,8 @@
 <!--<html lang="en">-->
 <!--<head>-->
 <!--    <meta charset="UTF-8">-->
-<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
+<!--&lt;!&ndash;    <meta name="viewport" content="width=device-width, initial-scale=1.0">&ndash;&gt;-->
+<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">-->
 <!--    <title> Reserve - 1383 Karaoke Bar & KTV</title>-->
 <!--    <link rel="stylesheet" href="../styles/booking.css">-->
 <!--    <style>-->
@@ -268,18 +269,13 @@
 
 <!--        <div class="form-group">-->
 <!--            <label for="booking-date">1. Select Date</label>-->
-<!--            <input type="date" id="booking-date" class="neon-input" required onchange="fetchBookingsAndRenderTimes()">-->
+<!--            <input type="date" id="booking-date" class="neon-input" required onchange="handleDateChange()">-->
 <!--        </div>-->
 
 <!--        <div class="form-group">-->
 <!--            <label for="booking-duration">2. Duration</label>-->
 <!--            <select id="booking-duration" class="neon-input" required onchange="fetchBookingsAndRenderTimes()">-->
-<!--                <option value="" disabled selected>How long?</option>-->
-<!--                <option value="1">1 Hour</option>-->
-<!--                <option value="2">2 Hours</option>-->
-<!--                <option value="3">3 Hours</option>-->
-<!--                <option value="4">4 Hours</option>-->
-<!--                <option value="5">5+ Hours (Call Us)</option>-->
+<!--                <option value="" disabled selected>Select Date First</option>-->
 <!--            </select>-->
 <!--        </div>-->
 
@@ -388,6 +384,38 @@
 <!--    // 🌟 核心升级区：动态时间检测与渲染-->
 <!--    // ==========================================-->
 
+<!--    // 🌟 新增：处理日期改变时的逻辑（决定是否显示 1 Hour）-->
+<!--    function handleDateChange() {-->
+<!--        const dateVal = document.getElementById('booking-date').value;-->
+<!--        const durationSelect = document.getElementById('booking-duration');-->
+
+<!--        if (!dateVal) return;-->
+
+<!--        // 判断选中的日期是星期几-->
+<!--        const [year, month, day] = dateVal.split('-');-->
+<!--        const selectedDate = new Date(year, month - 1, day);-->
+<!--        const dayOfWeek = selectedDate.getDay(); // 0 是周日，5 是周五，6 是周六-->
+
+<!--        // 清空原有的下拉选项-->
+<!--        durationSelect.innerHTML = '<option value="" disabled selected>How long?</option>';-->
+
+<!--        // 如果不是周五(5)和周六(6)，才添加 1 Hour 选项-->
+<!--        if (dayOfWeek !== 5 && dayOfWeek !== 6) {-->
+<!--            durationSelect.innerHTML += '<option value="1">1 Hour</option>';-->
+<!--        }-->
+
+<!--        // 添加其余的选项-->
+<!--        durationSelect.innerHTML += `-->
+<!--            <option value="2">2 Hours</option>-->
+<!--            <option value="3">3+ Hours</option>-->
+<!--&lt;!&ndash;            <option value="4">4 Hours</option>&ndash;&gt;-->
+<!--&lt;!&ndash;            <option value="5">5+ Hours</option>&ndash;&gt;-->
+<!--        `;-->
+
+<!--        // 触发后续的查询逻辑-->
+<!--        fetchBookingsAndRenderTimes();-->
+<!--    }-->
+
 <!--    // 每当日期或时长发生变化时，触发此函数-->
 <!--    async function fetchBookingsAndRenderTimes() {-->
 <!--        const dateVal = document.getElementById('booking-date').value;-->
@@ -395,13 +423,13 @@
 <!--        const timeArea = document.getElementById('time-selection-area');-->
 <!--        const nextBtn = document.getElementById('btn-next-3');-->
 
-<!--        // 如果用户选择了 "5+ Hours (Call Us)"-->
-<!--        if (durationVal === "5") {-->
-<!--            alert('For bookings 5 hours or longer, please call us directly to arrange special pricing and availability.');-->
-<!--            document.getElementById('booking-duration').value = "";-->
-<!--            timeArea.style.display = 'none';-->
-<!--            nextBtn.disabled = true;-->
-<!--            return;-->
+<!--        // 🌟 需求 1: 如果用户选择了 3, 4 或 5 小时-->
+<!--        if (durationVal && parseInt(durationVal) >= 3) {-->
+<!--            alert('For bookings 3 hours or longer, please call us directly to arrange special pricing and availability: 6138671383');-->
+<!--            document.getElementById('booking-duration').value = ""; // 重置选择-->
+<!--            timeArea.style.display = 'none'; // 隐藏下方选时间的按钮-->
+<!--            nextBtn.disabled = true; // 禁用 Next-->
+<!--            return; // 终止执行，不向后端请求数据-->
 <!--        }-->
 
 <!--        // 必须日期和时长都选了，才去请求后端-->
@@ -422,10 +450,8 @@
 <!--        document.getElementById('dynamic-time-container').innerHTML = '<p style="color:var(&#45;&#45;text-muted); grid-column:span 3;">Checking availability...</p>';-->
 
 <!--        try {-->
-<!--            // 注意：真实生产环境中，你应该只请求这一天的数据，比如 GET /api/bookings?date=xxx-->
-<!--            // 这里为了兼容你现有的接口，我们拉取所有 bookings 然后在前端过滤-->
-<!--            // const response = await fetch('/api/admin/bookings');-->
-<!--            const response = await fetch('/api/public/bookings'); // 👈 这才是正确的！-->
+<!--            // 请求公开的防冲突接口-->
+<!--            const response = await fetch('/api/public/bookings');-->
 <!--            const result = await response.json();-->
 
 <!--            // 过滤出用户选定这一天的订单-->
@@ -441,62 +467,18 @@
 <!--    }-->
 
 <!--    // 渲染带有防碰撞逻辑的时间按钮-->
-<!--    // function renderTimeButtons() {-->
-<!--    //     const container = document.getElementById('dynamic-time-container');-->
-<!--    //     container.innerHTML = ''; // 清空-->
-<!--    //-->
-<!--    //     // 生成营业时间段 (假设从下午 6:00 到 凌晨 1:00)-->
-<!--    //     // 你可以根据周末或平时的营业时间调整这个数组-->
-<!--    //     const allTimeSlots = [-->
-<!--    //         "18:00", "18:30", "19:00", "19:30", "20:00", "20:30",-->
-<!--    //         "21:00", "21:30", "22:00", "22:30", "23:00", "23:30",-->
-<!--    //         "00:00", "00:30", "01:00"-->
-<!--    //     ];-->
-<!--    //-->
-<!--    //     allTimeSlots.forEach(time24 => {-->
-<!--    //         // 把 "18:00" 转换成好读的格式 "6:00 PM"-->
-<!--    //         const displayTime = formatTimeForDisplay(time24);-->
-<!--    //-->
-<!--    //         // 🌟 调用碰撞检测算法！-->
-<!--    //         const isAvailable = isTimeSlotAvailable(time24, parseInt(bookingData.duration), bookingData.room, currentDayBookings);-->
-<!--    //-->
-<!--    //         const btn = document.createElement('button');-->
-<!--    //         btn.className = 'dynamic-time-btn';-->
-<!--    //-->
-<!--    //         if (!isAvailable) {-->
-<!--    //             btn.innerText = `${displayTime}\n(Full)`;-->
-<!--    //             btn.classList.add('sold-out');-->
-<!--    //             btn.disabled = true;-->
-<!--    //         } else {-->
-<!--    //             btn.innerText = displayTime;-->
-<!--    //             // 绑定点击事件-->
-<!--    //             btn.onclick = () => {-->
-<!--    //                 // 清除其他按钮的高亮-->
-<!--    //                 document.querySelectorAll('.dynamic-time-btn').forEach(b => b.classList.remove('selected'));-->
-<!--    //                 btn.classList.add('selected');-->
-<!--    //-->
-<!--    //                 // 保存选中的 24小时制 时间供后端使用-->
-<!--    //                 bookingData.time = time24;-->
-<!--    //                 document.getElementById('btn-next-3').disabled = false;-->
-<!--    //             };-->
-<!--    //         }-->
-<!--    //         container.appendChild(btn);-->
-<!--    //     });-->
-<!--    // }-->
-<!--    // 渲染带有防碰撞逻辑的时间按钮-->
 <!--    function renderTimeButtons() {-->
 <!--        const container = document.getElementById('dynamic-time-container');-->
 <!--        container.innerHTML = ''; // 清空-->
 
-<!--        // 🌟 1. 获取用户选择的日期，判断是星期几-->
-<!--        // 用 split 处理 "YYYY-MM-DD" 字符串可以完美避开各种时区错乱问题-->
+<!--        // 获取用户选择的日期，判断是星期几-->
 <!--        const [year, month, day] = bookingData.date.split('-');-->
 <!--        const selectedDate = new Date(year, month - 1, day);-->
 <!--        const dayOfWeek = selectedDate.getDay(); // 0 是周日，6 是周六-->
 
 <!--        let allTimeSlots = [];-->
 
-<!--        // 🌟 2. 根据工作日或周末分配不同的时间选项-->
+<!--        // 根据工作日或周末分配不同的时间选项-->
 <!--        if (dayOfWeek === 0 || dayOfWeek === 6) {-->
 <!--            // 周末 (周六、周日): 2:00 PM (14:00) 到 12:00 AM (00:00)-->
 <!--            allTimeSlots = [-->
@@ -513,9 +495,8 @@
 <!--            ];-->
 <!--        }-->
 
-<!--        // 3. 开始渲染按钮并跑碰撞算法-->
+<!--        // 开始渲染按钮并跑碰撞算法-->
 <!--        allTimeSlots.forEach(time24 => {-->
-<!--            // 把 "18:00" 转换成好读的格式 "6:00 PM"-->
 <!--            const displayTime = formatTimeForDisplay(time24);-->
 
 <!--            // 调用碰撞检测算法！-->
@@ -663,7 +644,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title> Reserve - 1383 Karaoke Bar & KTV</title>
     <link rel="stylesheet" href="../styles/booking.css">
@@ -676,6 +656,11 @@
             --text-main: #F9FAFB;
             --text-muted: #9CA3AF;
             --border-color: #1F2937;
+        }
+
+        /* 🌟 禁用双击放大，提升手机端 App 般的手感 */
+        body, button, .btn-primary, .btn-secondary, .dynamic-time-btn, .room-card {
+            touch-action: manipulation;
         }
 
         body {
@@ -772,15 +757,13 @@
         .counter button { width: 40px; height: 40px; border-radius: 50%; background: var(--card-bg); border: 1px solid var(--primary-blue); color: var(--primary-blue); font-size: 1.2rem; cursor: pointer; }
         .counter span { font-size: 1.5rem; width: 30px; }
 
-        /* =========================================
-           新增：表单输入框样式 (日历、下拉菜单)
-           ========================================= */
+        /* 表单输入框样式 */
         .form-group {
             margin-bottom: 25px;
             text-align: left;
             width: 100%;
             max-width: 400px;
-            margin: 0 auto 25px auto; /* 居中 */
+            margin: 0 auto 25px auto;
         }
 
         .form-group label {
@@ -912,9 +895,9 @@
         <p class="step-subtitle">How many people are joining?</p>
 
         <div class="counter">
-            <button onclick="changePartySize(-1)">-</button>
+            <button id="btn-minus" onclick="changePartySize(-1)" style="visibility: hidden;">-</button>
             <span id="party-size-display">2</span>
-            <button onclick="changePartySize(1)">+</button>
+            <button id="btn-plus" onclick="changePartySize(1)">+</button>
         </div>
 
         <div class="actions">
@@ -926,7 +909,7 @@
     <div id="step-3" class="step-content" style="display: none;">
         <h2 class="step-title">Select Date & Time</h2>
         <p class="step-subtitle">When would you like to sing?</p>
-        <p class="step-subtitle">For Friday and Saturday minimum 2 hours reservation</p>
+        <p class="step-subtitle" style="font-size: 0.85rem; margin-top:-30px;">For Friday and Saturday minimum 2 hours reservation</p>
 
         <div class="form-group">
             <label for="booking-date">1. Select Date</label>
@@ -984,28 +967,29 @@
         duration: null
     };
 
-    // 存储从后端拉取到的当天的所有订单，用于冲突检测
     let currentDayBookings = [];
 
-    // 物理房间数量配置 (用于防重叠算法)
+    // 🌟 包厢人数上限配置
+    const ROOM_MAX_PEOPLE = {
+        "Small Room": 8,
+        "Medium Room": 12,
+        "VIP Room": 20
+    };
+
     const ROOM_CAPACITIES = {
         "Small Room": 2,
         "Medium Room": 1,
         "VIP Room": 2,
-        "Large Room": 2 // 兼容你的旧数据
+        "Large Room": 2
     };
 
-    // 初始化时，禁用过去的日期
     window.onload = function() {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('booking-date').setAttribute('min', today);
     };
 
-    // 2. 步骤切换逻辑
     function goToStep(stepNumber) {
-        document.querySelectorAll('.step-content').forEach(el => {
-            el.style.display = 'none';
-        });
+        document.querySelectorAll('.step-content').forEach(el => el.style.display = 'none');
         document.getElementById(`step-${stepNumber}`).style.display = 'block';
 
         document.querySelectorAll('.step-circle').forEach((el, index) => {
@@ -1017,35 +1001,59 @@
         });
     }
 
-    // 3. Step 1: 选房间逻辑
+    // 🌟 选房间逻辑 (加入人数强制降级限制)
     function selectRoom(roomName, element) {
         bookingData.room = roomName;
         document.querySelectorAll('.room-card').forEach(el => el.classList.remove('selected'));
         element.classList.add('selected');
         document.getElementById('btn-next-1').disabled = false;
 
-        // 如果用户返回第一步换了房间，我们需要清空时间选择并重新拉取数据
+        // 如果当前选的人数超过了新包厢的上限，强制降下来
+        const maxLimit = ROOM_MAX_PEOPLE[roomName];
+        if (bookingData.partySize > maxLimit) {
+            bookingData.partySize = maxLimit;
+            document.getElementById('party-size-display').innerText = bookingData.partySize;
+        }
+
+        // 刷新加减按钮的显示状态
+        updateCounterUI();
+
+        // 切换房间后重置时间
         document.getElementById('booking-time') ? document.getElementById('booking-time').value = "" : null;
         document.getElementById('btn-next-3').disabled = true;
         bookingData.time = null;
         if (bookingData.date && bookingData.duration) fetchBookingsAndRenderTimes();
     }
 
-    // 4. Step 2: 人数逻辑
+    // 🌟 人数逻辑 (限制最大最小值)
     function changePartySize(change) {
+        const maxLimit = bookingData.room ? ROOM_MAX_PEOPLE[bookingData.room] : 25;
         let currentSize = bookingData.partySize;
         let newSize = currentSize + change;
-        if (newSize >= 1 && newSize <= 25) {
+
+        if (newSize >= 1 && newSize <= maxLimit) {
             bookingData.partySize = newSize;
             document.getElementById('party-size-display').innerText = newSize;
+            updateCounterUI();
         }
     }
 
+    // 🌟 控制加减按钮隐藏/显示
+    function updateCounterUI() {
+        const maxLimit = bookingData.room ? ROOM_MAX_PEOPLE[bookingData.room] : 25;
+        const btnPlus = document.getElementById('btn-plus');
+        const btnMinus = document.getElementById('btn-minus');
+
+        btnPlus.style.visibility = (bookingData.partySize >= maxLimit) ? 'hidden' : 'visible';
+        btnMinus.style.visibility = (bookingData.partySize <= 1) ? 'hidden' : 'visible';
+    }
+
+
     // ==========================================
-    // 🌟 核心升级区：动态时间检测与渲染
+    // 核心升级区：动态日期与时间限制
     // ==========================================
 
-    // 🌟 新增：处理日期改变时的逻辑（决定是否显示 1 Hour）
+    // 🌟 需求2：根据选择的日期，判断是否开放 1 Hour 选项
     function handleDateChange() {
         const dateVal = document.getElementById('booking-date').value;
         const durationSelect = document.getElementById('booking-duration');
@@ -1055,7 +1063,7 @@
         // 判断选中的日期是星期几
         const [year, month, day] = dateVal.split('-');
         const selectedDate = new Date(year, month - 1, day);
-        const dayOfWeek = selectedDate.getDay(); // 0 是周日，5 是周五，6 是周六
+        const dayOfWeek = selectedDate.getDay(); // 0是周日，5是周五，6是周六
 
         // 清空原有的下拉选项
         durationSelect.innerHTML = '<option value="" disabled selected>How long?</option>';
@@ -1065,35 +1073,38 @@
             durationSelect.innerHTML += '<option value="1">1 Hour</option>';
         }
 
-        // 添加其余的选项
+        // 添加其余的选项 (把 3,4,5 合并为了 3+ Hours)
         durationSelect.innerHTML += `
             <option value="2">2 Hours</option>
-            <option value="3">3+ Hours</option>
-<!--            <option value="4">4 Hours</option>-->
-<!--            <option value="5">5+ Hours</option>-->
+            <option value="3">3+ Hours (Call Us)</option>
         `;
 
-        // 触发后续的查询逻辑
-        fetchBookingsAndRenderTimes();
+        // 因为重新生成了选项，清空下方的时间网格并重置状态
+        document.getElementById('time-selection-area').style.display = 'none';
+        document.getElementById('btn-next-3').disabled = true;
+        bookingData.duration = null;
+        bookingData.time = null;
     }
 
-    // 每当日期或时长发生变化时，触发此函数
+    // 每次时长发生变化时触发
     async function fetchBookingsAndRenderTimes() {
         const dateVal = document.getElementById('booking-date').value;
         const durationVal = document.getElementById('booking-duration').value;
         const timeArea = document.getElementById('time-selection-area');
         const nextBtn = document.getElementById('btn-next-3');
 
-        // 🌟 需求 1: 如果用户选择了 3, 4 或 5 小时
+        // 🌟 需求1: 选择了 3 小时及以上，立刻阻断流程并提示打电话
         if (durationVal && parseInt(durationVal) >= 3) {
             alert('For bookings 3 hours or longer, please call us directly to arrange special pricing and availability: 6138671383');
-            document.getElementById('booking-duration').value = ""; // 重置选择
-            timeArea.style.display = 'none'; // 隐藏下方选时间的按钮
-            nextBtn.disabled = true; // 禁用 Next
-            return; // 终止执行，不向后端请求数据
+
+            // 重置 duration 选择，隐藏下方的下一步按钮，彻底阻断线上预订
+            document.getElementById('booking-duration').value = "";
+            timeArea.style.display = 'none';
+            nextBtn.disabled = true;
+            return;
         }
 
-        // 必须日期和时长都选了，才去请求后端
+        // 如果日期或时长没选全，不发请求
         if (!dateVal || !durationVal) {
             timeArea.style.display = 'none';
             nextBtn.disabled = true;
@@ -1103,10 +1114,9 @@
         // 保存到全局数据
         bookingData.date = dateVal;
         bookingData.duration = durationVal;
-        bookingData.time = null; // 重置之前选的时间
+        bookingData.time = null;
         nextBtn.disabled = true;
 
-        // 显示 Loading 状态
         timeArea.style.display = 'block';
         document.getElementById('dynamic-time-container').innerHTML = '<p style="color:var(--text-muted); grid-column:span 3;">Checking availability...</p>';
 
@@ -1115,10 +1125,10 @@
             const response = await fetch('/api/public/bookings');
             const result = await response.json();
 
-            // 过滤出用户选定这一天的订单
+            // 过滤出当天的订单
             currentDayBookings = (result.data || []).filter(b => b.date === dateVal);
 
-            // 开始渲染时间按钮！
+            // 渲染时间按钮
             renderTimeButtons();
 
         } catch (error) {
@@ -1127,21 +1137,17 @@
         }
     }
 
-    // 渲染带有防碰撞逻辑的时间按钮
     function renderTimeButtons() {
         const container = document.getElementById('dynamic-time-container');
-        container.innerHTML = ''; // 清空
+        container.innerHTML = '';
 
-        // 获取用户选择的日期，判断是星期几
         const [year, month, day] = bookingData.date.split('-');
         const selectedDate = new Date(year, month - 1, day);
-        const dayOfWeek = selectedDate.getDay(); // 0 是周日，6 是周六
+        const dayOfWeek = selectedDate.getDay();
 
         let allTimeSlots = [];
 
-        // 根据工作日或周末分配不同的时间选项
         if (dayOfWeek === 0 || dayOfWeek === 6) {
-            // 周末 (周六、周日): 2:00 PM (14:00) 到 12:00 AM (00:00)
             allTimeSlots = [
                 "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
                 "17:00", "17:30", "18:00", "18:30", "19:00", "19:30",
@@ -1149,18 +1155,14 @@
                 "23:00", "23:30", "00:00"
             ];
         } else {
-            // 工作日 (周一到周五): 6:00 PM (18:00) 到 11:00 PM (23:00)
             allTimeSlots = [
                 "18:00", "18:30", "19:00", "19:30", "20:00", "20:30",
                 "21:00", "21:30", "22:00", "22:30", "23:00"
             ];
         }
 
-        // 开始渲染按钮并跑碰撞算法
         allTimeSlots.forEach(time24 => {
             const displayTime = formatTimeForDisplay(time24);
-
-            // 调用碰撞检测算法！
             const isAvailable = isTimeSlotAvailable(time24, parseInt(bookingData.duration), bookingData.room, currentDayBookings);
 
             const btn = document.createElement('button');
@@ -1172,13 +1174,9 @@
                 btn.disabled = true;
             } else {
                 btn.innerText = displayTime;
-                // 绑定点击事件
                 btn.onclick = () => {
-                    // 清除其他按钮的高亮
                     document.querySelectorAll('.dynamic-time-btn').forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
-
-                    // 保存选中的 24小时制 时间供后端使用
                     bookingData.time = time24;
                     document.getElementById('btn-next-3').disabled = false;
                 };
@@ -1187,16 +1185,14 @@
         });
     }
 
-    // --- 碰撞检测核心算法 ---
+    // --- 碰撞检测算法 ---
     function isTimeSlotAvailable(proposedTime24, durationHours, selectedRoom, dateBookings) {
-        // 如果旧数据里有 'Large Room'，强制把它看作 'VIP Room' 处理
         const targetRoomType = selectedRoom === 'Large Room' ? 'VIP Room' : selectedRoom;
         const maxRooms = ROOM_CAPACITIES[targetRoomType] || 1;
 
         let newStart = parseTimeToNumber(proposedTime24);
         let newEnd = newStart + durationHours;
 
-        // 找出同一天、同房型的已有订单
         const relevantBookings = dateBookings.filter(b => {
             const bRoom = b.room === 'Large Room' ? 'VIP Room' : b.room;
             return bRoom === targetRoomType;
@@ -1208,7 +1204,6 @@
             let oldStart = parseTimeToNumber(b.time);
             let oldEnd = oldStart + parseFloat(b.duration);
 
-            // 碰撞公式：(新开始 < 旧结束) AND (新结束 > 旧开始)
             if (newStart < oldEnd && newEnd > oldStart) {
                 overlapCount++;
             }
@@ -1217,30 +1212,26 @@
         return overlapCount < maxRooms;
     }
 
-    // 辅助函数：把 "18:30" 转换成浮点数 18.5
     function parseTimeToNumber(timeStr) {
-        // 兼容处理如果传入的是带 PM 的格式 (比如你历史订单里的数据)
         if (timeStr.toLowerCase().includes('pm') || timeStr.toLowerCase().includes('am')) {
             let [time, modifier] = timeStr.split(' ');
             let [hours, minutes] = time.split(':').map(Number);
             if (modifier.toLowerCase() === 'pm' && hours !== 12) hours += 12;
             if (modifier.toLowerCase() === 'am' && hours === 12) hours = 0;
-            if (hours < 12) hours += 24; // 凌晨营业算到第二天
+            if (hours < 12) hours += 24;
             return hours + (minutes / 60);
         } else {
-            // 处理 24小时制字符串 "18:30"
             let [hours, minutes] = timeStr.split(':').map(Number);
-            if (hours < 12) hours += 24; // 凌晨营业算到第二天
+            if (hours < 12) hours += 24;
             return hours + (minutes / 60);
         }
     }
 
-    // 辅助函数：把 "18:00" 转换成 "6:00 PM"
     function formatTimeForDisplay(time24) {
         let [h, m] = time24.split(':').map(Number);
         const ampm = h >= 12 && h < 24 ? 'PM' : 'AM';
         h = h % 12;
-        h = h ? h : 12; // 0点变成12
+        h = h ? h : 12;
         return `${h}:${m.toString().padStart(2, '0')} ${ampm}`;
     }
 
@@ -1248,8 +1239,6 @@
     // 提交订单逻辑
     // ==========================================
     async function submitBooking() {
-        console.log("1. submitBooking 函数被触发了！");
-
         const nameInput = document.getElementById('user-name').value.trim();
         const phoneInput = document.getElementById('user-phone').value.trim();
 
@@ -1260,8 +1249,6 @@
 
         bookingData.name = nameInput;
         bookingData.phone = phoneInput;
-
-        console.log("2. 准备发送给后端的数据包:", bookingData);
 
         const confirmBtn = document.getElementById('confirm-booking-btn');
         if (confirmBtn) {
