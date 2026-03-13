@@ -278,3 +278,256 @@ body {
         font-size: 1.1rem;
     }
 }
+
+.timetable-wrapper {
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 20px;
+    overflow-x: auto; /* 手机端可以横向滑动 */
+    margin-top: 20px;
+}
+
+.timetable-grid {
+    display: grid;
+    /* 第一列给时间标签，后面三列给房间 */
+    grid-template-columns: 80px repeat(3, 1fr);
+    /* 每一行代表 1 小时，假设营业 9 小时 (18:00 - 03:00) */
+    grid-template-rows: 40px repeat(9, 60px);
+    gap: 1px;
+    background-color: var(--border-color); /* 网格线颜色 */
+}
+
+.grid-header {
+    background: var(--bg-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: var(--primary-blue);
+}
+
+.time-label {
+    background: var(--bg-dark);
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 10px;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+/* 预约块的样式 */
+.booking-slot {
+    background: rgba(59, 130, 246, 0.2);
+    border: 1px solid var(--primary-blue);
+    border-radius: 4px;
+    margin: 2px;
+    padding: 5px;
+    font-size: 0.75rem;
+    color: white;
+    overflow: hidden;
+    box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+    z-index: 10;
+}
+
+/* ================== 大学课表风格 (Classic Timetable) ================== */
+.uni-timetable {
+    display: flex;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-top: 20px;
+    overflow-x: auto;
+    /* 关键：给整个课表加上横向的背景网格线，1小时60px */
+    background-image: linear-gradient(to bottom, transparent 59px, var(--border-color) 60px);
+    background-size: 100% 60px;
+    background-position: 0 40px; /* 向下偏移40px，避开表头 */
+}
+
+/* 左侧时间轴 */
+.uni-time-col {
+    width: 80px;
+    min-width: 80px;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    padding-top: 40px; /* 给右侧的表头留出高度 */
+    background: var(--card-bg);
+    z-index: 2;
+}
+
+.uni-time-label {
+    height: 60px; /* 1小时 = 60px */
+    padding-right: 10px;
+    text-align: right;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+/* 右侧房间列的外部容器 */
+.uni-room-cols {
+    display: flex;
+    flex: 1;
+}
+
+/* 每一列房间 */
+.uni-room-col {
+    flex: 1;
+    min-width: 200px; /* 防止屏幕太小时挤在一起 */
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+}
+
+.uni-room-col:last-child {
+    border-right: none;
+}
+
+/* 房间名表头 */
+.uni-room-header {
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    color: var(--primary-blue);
+    background: var(--bg-dark);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 3;
+}
+
+/* 存放预约块的相对定位容器 */
+.uni-room-events {
+    position: relative;
+    flex: 1;
+    min-height: 540px; /* 9个小时 * 60px = 540px */
+}
+
+/* 绝对定位的预约块！ */
+.uni-booking-block {
+    position: absolute;
+    left: 2px;
+    right: 2px;
+    background: #e2e8f0; /* 截图里那种灰白底色 */
+    color: #b91c1c;      /* 截图里那种深红色文字 */
+    border-left: 4px solid #b91c1c; /* 左侧加个粗边框更好看 */
+    padding: 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    overflow: hidden;
+    transition: transform 0.1s;
+}
+
+.uni-booking-block:hover {
+    transform: scale(1.02);
+    z-index: 10;
+}
+
+/* 如果你还是想保留原本的暗黑霓虹风色块，可以取消下面这段注释 */
+/*
+.uni-booking-block {
+    background: rgba(59, 130, 246, 0.15);
+    color: white;
+    border: 1px solid var(--primary-blue);
+    border-left: 4px solid var(--primary-blue);
+}
+*/
+
+
+/* ================== 周历课表风格 (Weekly Timetable) ================== */
+.week-nav {
+    display: flex;
+    align-items: center;
+}
+
+.uni-timetable {
+    display: flex;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    margin-top: 20px;
+    overflow-x: auto;
+    background-image: linear-gradient(to bottom, transparent 59px, var(--border-color) 60px);
+    background-size: 100% 60px;
+    background-position: 0 50px; /* 避开表头高度 */
+}
+
+.uni-time-col {
+    width: 80px;
+    min-width: 80px;
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+    padding-top: 50px;
+    background: var(--card-bg);
+    z-index: 2;
+}
+
+.uni-time-label {
+    height: 60px;
+    padding-right: 10px;
+    text-align: right;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.uni-day-cols {
+    display: flex;
+    flex: 1;
+}
+
+.uni-day-col {
+    flex: 1;
+    min-width: 150px; /* 每天最小宽度 */
+    border-right: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 每天的表头：显示星期几和日期 */
+.uni-day-header {
+    height: 50px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-dark);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 3;
+}
+.uni-day-header .day-name { font-weight: bold; color: var(--text-main); }
+.uni-day-header .day-date { font-size: 0.8rem; color: var(--text-muted); }
+
+.uni-day-events {
+    position: relative;
+    flex: 1;
+    min-height: 540px; /* 9小时 */
+}
+
+/* 绝对定位的预约块 */
+.uni-booking-block {
+    position: absolute;
+    color: white;
+    padding: 6px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+    overflow: hidden;
+    transition: transform 0.1s, z-index 0.1s;
+    border: 1px solid rgba(255,255,255,0.2);
+}
+
+.uni-booking-block:hover {
+    transform: scale(1.03);
+    z-index: 20 !important; /* 悬浮时置顶 */
+}
