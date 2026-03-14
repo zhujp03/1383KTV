@@ -1,56 +1,317 @@
+/*!* =========================================*/
+/*   基础重置与变量 (保持暗黑风格统一)*/
+/*   ========================================= *!*/
+/*:root {*/
+/*    --bg-dark: #070B14;*/
+/*    --card-bg: #111827;*/
+/*    --primary-blue: #3B82F6;*/
+/*    --primary-blue-hover: #2563EB;*/
+/*    --text-main: #F9FAFB;*/
+/*    --text-muted: #9CA3AF;*/
+/*    --border-color: #1F2937;*/
+/*}*/
+
+/*body {*/
+/*    background-color: var(--bg-dark);*/
+/*    color: var(--text-main);*/
+/*    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;*/
+/*    margin: 0;*/
+/*    touch-action: manipulation;*/
+/*}*/
+
+/*!* 导航栏样式 (复用) *!*/
+/*.top-nav {*/
+/*    display: flex;*/
+/*    justify-content: space-between;*/
+/*    padding: 20px 40px;*/
+/*    background-color: rgba(7, 11, 20, 0.9);*/
+/*    border-bottom: 1px solid var(--border-color);*/
+/*}*/
+/*.nav-links a { color: var(--text-muted); text-decoration: none; margin-left: 20px; transition: color 0.3s;}*/
+/*.nav-links a:hover, .nav-links a.active { color: var(--text-main); font-weight: bold; }*/
+
+/*!* 页面主容器 *!*/
+/*.manage-container {*/
+/*    max-width: 600px;*/
+/*    margin: 80px auto;*/
+/*    padding: 20px;*/
+/*    text-align: center;*/
+/*}*/
+
+/*.manage-title { font-size: 2.5rem; margin-bottom: 10px; }*/
+/*.manage-subtitle { color: var(--text-muted); margin-bottom: 40px; }*/
+
+/*!* 搜索框区域 *!*/
+/*.search-box {*/
+/*    display: flex;*/
+/*    gap: 15px;*/
+/*    justify-content: center;*/
+/*    margin-bottom: 40px;*/
+/*}*/
+
+/*.neon-input {*/
+/*    width: 60%;*/
+/*    padding: 15px;*/
+/*    background-color: rgba(17, 24, 39, 0.8);*/
+/*    border: 1px solid var(--border-color);*/
+/*    border-radius: 8px;*/
+/*    color: #fff;*/
+/*    font-size: 1.1rem;*/
+/*    outline: none;*/
+/*    transition: border-color 0.3s;*/
+/*}*/
+
+/*.neon-input:focus {*/
+/*    border-color: var(--primary-blue);*/
+/*    box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);*/
+/*}*/
+
+/*.btn-primary {*/
+/*    padding: 15px 30px;*/
+/*    background-color: var(--primary-blue);*/
+/*    color: white;*/
+/*    border: none;*/
+/*    border-radius: 8px;*/
+/*    font-size: 1.1rem;*/
+/*    cursor: pointer;*/
+/*    font-weight: bold;*/
+/*    transition: background-color 0.3s;*/
+/*}*/
+/*.btn-primary:hover { background-color: var(--primary-blue-hover); }*/
+
+/*!* 订单结果卡片 *!*/
+/*.results-container { text-align: left; }*/
+
+/*.booking-card {*/
+/*    background-color: var(--card-bg);*/
+/*    border: 1px solid var(--border-color);*/
+/*    border-radius: 12px;*/
+/*    padding: 25px;*/
+/*    margin-bottom: 20px;*/
+/*    position: relative;*/
+/*    box-shadow: 0 5px 15px rgba(0,0,0,0.3);*/
+/*}*/
+
+/*.booking-header {*/
+/*    display: flex;*/
+/*    justify-content: space-between;*/
+/*    border-bottom: 1px solid var(--border-color);*/
+/*    padding-bottom: 15px;*/
+/*    margin-bottom: 15px;*/
+/*}*/
+
+/*.booking-id { color: var(--text-muted); font-size: 0.9rem; }*/
+/*.status-badge {*/
+/*    background-color: rgba(59, 130, 246, 0.2);*/
+/*    color: var(--primary-blue);*/
+/*    padding: 5px 12px;*/
+/*    border-radius: 20px;*/
+/*    font-size: 0.85rem;*/
+/*    font-weight: bold;*/
+/*}*/
+
+/*.booking-details p { margin: 10px 0; font-size: 1.1rem;}*/
+/*.booking-details strong { color: var(--primary-blue); width: 100px; display: inline-block;}*/
+/*!* =========================================*/
+/*   📱 移动端适配 (手机专用样式)*/
+/*   ========================================= *!*/
+/*@media (max-width: 768px) {*/
+/*    !* 1. 让原本并排的容器变成上下排列 *!*/
+/*    .rooms-grid, .features-grid, .menu-grid-container {*/
+/*        display: flex;*/
+/*        flex-direction: column; !* 垂直排列 *!*/
+/*        gap: 20px;*/
+/*    }*/
+
+/*    !* 2. 让表格支持左右滑动 (关键！手机放不下长表格) *!*/
+/*    .admin-table {*/
+/*        display: block;*/
+/*        overflow-x: auto; !* 允许横向滚动 *!*/
+/*        white-space: nowrap; !* 防止内容折行 *!*/
+/*    }*/
+
+/*    !* 3. 调整文字大小和边距 *!*/
+/*    .hero-title {*/
+/*        font-size: 1.8rem; !* 电脑端可能很大，手机端要调小 *!*/
+/*    }*/
+
+/*    .navbar {*/
+/*        padding: 10px 20px;*/
+/*        flex-direction: column; !* 导航栏 Logo 和 菜单上下排 *!*/
+/*    }*/
+
+/*    .nav-links {*/
+/*        margin-top: 10px;*/
+/*        gap: 10px;*/
+/*    }*/
+
+/*    !* 4. 调整弹窗宽度 *!*/
+/*    .modal-content {*/
+/*        width: 90%; !* 手机端弹窗占满 90% 宽度 *!*/
+/*        padding: 20px;*/
+/*    }*/
+
+/*    !* 5. 让按钮更容易被手指点击 *!*/
+/*    .btn-primary, .btn-secondary {*/
+/*        width: 100%; !* 按钮占满一行 *!*/
+/*        padding: 15px;*/
+/*        font-size: 1.1rem;*/
+/*    }*/
+/*}*/
+
+/*!* =========================================*/
+/*   📱 移动端导航栏修复*/
+/*   ========================================= *!*/
+/*@media (max-width: 600px) {*/
+/*    !* 1. 让导航栏容器支持垂直布局 *!*/
+/*    .navbar, .top-nav {*/
+/*        flex-direction: column; !* Logo 和 菜单上下排 *!*/
+/*        padding: 15px 10px !important;*/
+/*        height: auto !important; !* 取消固定高度 *!*/
+/*    }*/
+
+/*    !* 2. 让 Logo 居中并增加间距 *!*/
+/*    .logo {*/
+/*        margin-bottom: 15px;*/
+/*        font-size: 1.2rem;*/
+/*        text-align: center;*/
+/*    }*/
+
+/*    !* 3. 核心：让三个按钮均匀分布，不拥挤 *!*/
+/*    nav ul, .nav-links {*/
+/*        display: flex;*/
+/*        justify-content: center;*/
+/*        flex-wrap: wrap; !* 空间不够自动换行 *!*/
+/*        gap: 15px;      !* 链接之间的间距 *!*/
+/*        padding: 0;*/
+/*        margin: 0;*/
+/*        list-style: none;*/
+/*    }*/
+
+/*    !* 4. 调整链接文字大小，适合手指点击 *!*/
+/*    nav ul li a, .nav-links a {*/
+/*        font-size: 0.9rem !important; !* 稍微调小一点点 *!*/
+/*        padding: 5px 10px;*/
+/*        margin: 0 !important;*/
+/*        white-space: nowrap; !* 防止文字内部换行 *!*/
+/*    }*/
+
+/*    !* 5. 顺便修复一下你截图里搜索框的宽度 *!*/
+/*    .search-box {*/
+/*        flex-direction: column; !* 输入框和按钮在手机上上下排 *!*/
+/*        width: 100%;*/
+/*        padding: 0 20px;*/
+/*    }*/
+
+/*    .neon-input, .search-box .btn-primary {*/
+/*        width: 100% !important; !* 宽度占满手机屏幕 *!*/
+/*        margin-bottom: 10px;*/
+/*    }*/
+/*}*/
+
 /* =========================================
-   基础重置与变量 (保持暗黑风格统一)
+   1. 基础重置与变量
    ========================================= */
 :root {
     --bg-dark: #070B14;
-    --card-bg: #111827;
+    --card-bg: rgba(17, 24, 39, 0.6);
     --primary-blue: #3B82F6;
     --primary-blue-hover: #2563EB;
     --text-main: #F9FAFB;
     --text-muted: #9CA3AF;
-    --border-color: #1F2937;
+    --border-color: rgba(255, 255, 255, 0.1);
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
 }
 
 body {
     background-color: var(--bg-dark);
     color: var(--text-main);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    margin: 0;
-    touch-action: manipulation;
+    line-height: 1.6;
+    overflow-x: hidden;
+    position: relative;
+    touch-action: manipulation; /* 禁用双击放大 */
 }
 
-/* 导航栏样式 (复用) */
+/* 呼吸光斑背景 */
+.background-glow-1 {
+    position: fixed; top: -10%; right: -10%;
+    width: 65vw; height: 65vw;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.15) 0%, transparent 70%);
+    filter: blur(90px); z-index: -1; border-radius: 50%;
+}
+.background-glow-2 {
+    position: fixed; bottom: -15%; left: -15%;
+    width: 75vw; height: 75vw;
+    background: radial-gradient(circle, rgba(255, 42, 109, 0.1) 0%, transparent 70%);
+    filter: blur(120px); z-index: -1; border-radius: 50%;
+}
+
+/* =========================================
+   2. 导航栏 (复用全局样式)
+   ========================================= */
 .top-nav {
     display: flex;
     justify-content: space-between;
+    align-items: center;
     padding: 20px 40px;
-    background-color: rgba(7, 11, 20, 0.9);
+    background-color: rgba(7, 11, 20, 0.85);
+    backdrop-filter: blur(15px);
     border-bottom: 1px solid var(--border-color);
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 1000;
 }
-.nav-links a { color: var(--text-muted); text-decoration: none; margin-left: 20px; transition: color 0.3s;}
-.nav-links a:hover, .nav-links a.active { color: var(--text-main); font-weight: bold; }
+.logo { font-size: 1.5rem; font-weight: bold; color: #fff; letter-spacing: 1px; }
+.nav-links { display: flex; gap: 20px; }
+.nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.9rem; font-weight: 600; transition: 0.3s; letter-spacing: 1px;}
+.nav-links a:hover, .nav-links a.active { color: #fff; }
 
-/* 页面主容器 */
+/* 汉堡按钮默认隐藏 */
+.hamburger {
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+    z-index: 1001;
+}
+.hamburger span {
+    width: 30px; height: 3px; background-color: #fff;
+    border-radius: 3px; transition: all 0.3s ease;
+}
+
+/* =========================================
+   3. 页面主容器
+   ========================================= */
 .manage-container {
     max-width: 600px;
-    margin: 80px auto;
-    padding: 20px;
+    margin: 140px auto 80px auto; /* 避开固定导航栏 */
+    padding: 0 20px;
     text-align: center;
 }
 
-.manage-title { font-size: 2.5rem; margin-bottom: 10px; }
-.manage-subtitle { color: var(--text-muted); margin-bottom: 40px; }
+.manage-title { font-size: 2.5rem; margin-bottom: 10px; color: var(--primary-blue); font-weight: 800;}
+.manage-subtitle { color: var(--text-muted); margin-bottom: 40px; font-size: 1.1rem; }
 
-/* 搜索框区域 */
-.search-box {
+/* =========================================
+   4. 🌟 新版搜索框 (同行并排布局)
+   ========================================= */
+.search-bar-inline {
     display: flex;
-    gap: 15px;
-    justify-content: center;
-    margin-bottom: 40px;
+    gap: 12px;
+    align-items: center;
+    max-width: 500px;
+    margin: 0 auto 40px auto;
 }
 
 .neon-input {
-    width: 60%;
+    flex: 1; /* 占据剩余空间 */
     padding: 15px;
     background-color: rgba(17, 24, 39, 0.8);
     border: 1px solid var(--border-color);
@@ -59,6 +320,7 @@ body {
     font-size: 1.1rem;
     outline: none;
     transition: border-color 0.3s;
+    margin-bottom: 0 !important;
 }
 
 .neon-input:focus {
@@ -67,6 +329,7 @@ body {
 }
 
 .btn-primary {
+    width: auto !important;
     padding: 15px 30px;
     background-color: var(--primary-blue);
     color: white;
@@ -76,10 +339,14 @@ body {
     cursor: pointer;
     font-weight: bold;
     transition: background-color 0.3s;
+    white-space: nowrap; /* 搜索文字不换行 */
+    margin-bottom: 0 !important;
 }
-.btn-primary:hover { background-color: var(--primary-blue-hover); }
+.btn-primary:hover { background-color: var(--primary-blue-hover); box-shadow: 0 0 15px rgba(59, 130, 246, 0.4);}
 
-/* 订单结果卡片 */
+/* =========================================
+   5. 订单结果卡片
+   ========================================= */
 .results-container { text-align: left; }
 
 .booking-card {
@@ -89,7 +356,8 @@ body {
     padding: 25px;
     margin-bottom: 20px;
     position: relative;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    backdrop-filter: blur(10px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
 }
 
 .booking-header {
@@ -100,7 +368,7 @@ body {
     margin-bottom: 15px;
 }
 
-.booking-id { color: var(--text-muted); font-size: 0.9rem; }
+.booking-id { color: var(--text-muted); font-size: 0.95rem; }
 .status-badge {
     background-color: rgba(59, 130, 246, 0.2);
     color: var(--primary-blue);
@@ -110,101 +378,49 @@ body {
     font-weight: bold;
 }
 
-.booking-details p { margin: 10px 0; font-size: 1.1rem;}
-.booking-details strong { color: var(--primary-blue); width: 100px; display: inline-block;}
+.booking-details p { margin: 10px 0; font-size: 1.05rem; color: var(--text-muted);}
+.booking-details strong { color: #fff; width: 100px; display: inline-block;}
+
 /* =========================================
-   📱 移动端适配 (手机专用样式)
+   📱 6. 移动端终极整合适配
    ========================================= */
 @media (max-width: 768px) {
-    /* 1. 让原本并排的容器变成上下排列 */
-    .rooms-grid, .features-grid, .menu-grid-container {
-        display: flex;
-        flex-direction: column; /* 垂直排列 */
-        gap: 20px;
+    /* --- 导航栏与汉堡抽屉 --- */
+    .top-nav {
+        flex-direction: row !important;
+        justify-content: flex-end !important; /* 让汉堡按钮靠右 */
+        padding: 15px 20px !important;
+        height: auto !important;
+        background: transparent !important;
+        border-bottom: none !important;
     }
 
-    /* 2. 让表格支持左右滑动 (关键！手机放不下长表格) */
-    .admin-table {
-        display: block;
-        overflow-x: auto; /* 允许横向滚动 */
-        white-space: nowrap; /* 防止内容折行 */
-    }
-
-    /* 3. 调整文字大小和边距 */
-    .hero-title {
-        font-size: 1.8rem; /* 电脑端可能很大，手机端要调小 */
-    }
-
-    .navbar {
-        padding: 10px 20px;
-        flex-direction: column; /* 导航栏 Logo 和 菜单上下排 */
-    }
+    .logo { display: none !important; } /* 隐藏手机端 Logo */
+    .hamburger { display: flex; }
 
     .nav-links {
-        margin-top: 10px;
-        gap: 10px;
+        display: flex; position: fixed; top: 0; right: -100%; width: 280px; height: 100vh;
+        background-color: rgba(7, 11, 20, 0.98); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+        flex-direction: column; justify-content: center !important; align-items: center; gap: 15px !important;
+        transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1); z-index: 1000; border-left: 1px solid rgba(255, 255, 255, 0.1); margin: 0 !important; padding: 0 !important;
+    }
+    .nav-links.open { right: 0; }
+    .nav-links a { display: block; width: 100%; text-align: center; font-size: 1.1rem !important; padding: 15px 20px; line-height: 1.5; margin: 0 !important; }
+
+    .hamburger.toggle span:nth-child(1) { transform: translateY(9px) rotate(45deg); }
+    .hamburger.toggle span:nth-child(2) { opacity: 0; }
+    .hamburger.toggle span:nth-child(3) { transform: translateY(-9px) rotate(-45deg); }
+
+    /* --- 页面主体 --- */
+    .manage-container {
+        margin-top: 100px; /* 避开汉堡按钮 */
+    }
+    .manage-title {
+        font-size: 2rem;
     }
 
-    /* 4. 调整弹窗宽度 */
-    .modal-content {
-        width: 90%; /* 手机端弹窗占满 90% 宽度 */
-        padding: 20px;
-    }
-
-    /* 5. 让按钮更容易被手指点击 */
-    .btn-primary, .btn-secondary {
-        width: 100%; /* 按钮占满一行 */
-        padding: 15px;
-        font-size: 1.1rem;
-    }
-}
-
-/* =========================================
-   📱 移动端导航栏修复
-   ========================================= */
-@media (max-width: 600px) {
-    /* 1. 让导航栏容器支持垂直布局 */
-    .navbar, .top-nav {
-        flex-direction: column; /* Logo 和 菜单上下排 */
-        padding: 15px 10px !important;
-        height: auto !important; /* 取消固定高度 */
-    }
-
-    /* 2. 让 Logo 居中并增加间距 */
-    .logo {
-        margin-bottom: 15px;
-        font-size: 1.2rem;
-        text-align: center;
-    }
-
-    /* 3. 核心：让三个按钮均匀分布，不拥挤 */
-    nav ul, .nav-links {
-        display: flex;
-        justify-content: center;
-        flex-wrap: wrap; /* 空间不够自动换行 */
-        gap: 15px;      /* 链接之间的间距 */
-        padding: 0;
-        margin: 0;
-        list-style: none;
-    }
-
-    /* 4. 调整链接文字大小，适合手指点击 */
-    nav ul li a, .nav-links a {
-        font-size: 0.9rem !important; /* 稍微调小一点点 */
-        padding: 5px 10px;
-        margin: 0 !important;
-        white-space: nowrap; /* 防止文字内部换行 */
-    }
-
-    /* 5. 顺便修复一下你截图里搜索框的宽度 */
-    .search-box {
-        flex-direction: column; /* 输入框和按钮在手机上上下排 */
-        width: 100%;
-        padding: 0 20px;
-    }
-
-    .neon-input, .search-box .btn-primary {
-        width: 100% !important; /* 宽度占满手机屏幕 */
-        margin-bottom: 10px;
+    /* 手机特别小的屏幕，微调按钮间距 */
+    .btn-primary {
+        padding: 15px 20px;
     }
 }

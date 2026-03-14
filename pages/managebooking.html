@@ -1,19 +1,144 @@
+<!--<!DOCTYPE html>-->
+<!--<html lang="en">-->
+<!--<head>-->
+<!--  <meta charset="UTF-8">-->
+<!--  <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
+<!--  <title>SEARCH RESERVATION - 1383 Karaoke Bar & KTV</title>-->
+<!--  <link rel="stylesheet" href="../styles/managebooking.css">-->
+<!--</head>-->
+<!--<body>-->
+
+<!--<nav class="top-nav">-->
+<!--  <div class="logo">1383 Karaoke Bar & KTV</div>-->
+<!--  <div class="nav-links">-->
+<!--    <a href="homeindex.html">HOME</a>-->
+<!--    <a href="booking.html">RESERVE</a>-->
+<!--    <a href="managebooking.html" class="active">SEARCH YOUR RESERVATION</a>-->
+<!--    <a href="legal.html">POLICIES</a>-->
+<!--  </div>-->
+<!--</nav>-->
+
+<!--<div class="manage-container">-->
+<!--  <h1 class="manage-title">Find Your Reservation</h1>-->
+<!--  <p class="manage-subtitle">Enter the phone number you used during booking.</p>-->
+
+<!--  <div class="search-box">-->
+<!--    <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 1234567890" onkeypress="handleEnter(event)">-->
+<!--    <button class="btn-primary" onclick="searchBooking()" id="search-btn">Search</button>-->
+<!--  </div>-->
+
+<!--  <div id="results-container" class="results-container">-->
+<!--  </div>-->
+<!--</div>-->
+
+<!--<script>-->
+<!--  // 允许用户按回车键触发搜索-->
+<!--  function handleEnter(event) {-->
+<!--    if (event.key === 'Enter') {-->
+<!--      searchBooking();-->
+<!--    }-->
+<!--  }-->
+
+<!--  async function searchBooking() {-->
+<!--    const phoneInput = document.getElementById('search-phone').value.trim();-->
+<!--    const resultsContainer = document.getElementById('results-container');-->
+<!--    const searchBtn = document.getElementById('search-btn');-->
+
+<!--    if (!phoneInput) {-->
+<!--      alert("Please enter a phone number.");-->
+<!--      return;-->
+<!--    }-->
+
+<!--    // 搜索中状态-->
+<!--    searchBtn.innerText = "Searching...";-->
+<!--    searchBtn.disabled = true;-->
+<!--    resultsContainer.innerHTML = '<p style="text-align:center; color: var(&#45;&#45;text-muted);">Looking for your bookings...</p>';-->
+
+<!--    try {-->
+<!--      // 调用后端的查询 API-->
+<!--      // const response = await fetch(`http://localhost:3000/api/book/search/${phoneInput}`);-->
+<!--      const response = await fetch(`/api/book/search/${phoneInput}`);-->
+<!--      const result = await response.json();-->
+
+<!--      searchBtn.innerText = "Search";-->
+<!--      searchBtn.disabled = false;-->
+
+<!--      if (response.ok) {-->
+<!--        if (result.data.length === 0) {-->
+<!--          // 没查到数据-->
+<!--          resultsContainer.innerHTML = `-->
+<!--                        <div style="text-align:center; padding: 40px; background: var(&#45;&#45;card-bg); border-radius: 12px; border: 1px solid var(&#45;&#45;border-color);">-->
+<!--                            <h3 style="color: var(&#45;&#45;text-main);">No Bookings Found</h3>-->
+<!--                            <p style="color: var(&#45;&#45;text-muted);">We couldn't find any reservations under the phone number <strong>${phoneInput}</strong>.</p>-->
+<!--                        </div>-->
+<!--                    `;-->
+<!--        } else {-->
+<!--          // 查到数据了，清空容器并循环渲染卡片-->
+<!--          resultsContainer.innerHTML = '';-->
+<!--          result.data.forEach(booking => {-->
+<!--            const card = document.createElement('div');-->
+<!--            card.className = 'booking-card';-->
+
+<!--            // 动态生成卡片 HTML-->
+<!--            card.innerHTML = `-->
+<!--                            <div class="booking-header">-->
+<!--                                <span class="booking-id">Booking ID: #${booking.id}</span>-->
+<!--                                <span class="status-badge">Received</span>-->
+<!--                            </div>-->
+<!--                            <div class="booking-details">-->
+<!--                                <p><strong>Date:</strong> ${booking.date}</p>-->
+<!--                                <p><strong>Time:</strong> ${booking.time}</p>-->
+<!--                                <p><strong>Room:</strong> ${booking.room}</p>-->
+<!--                                <p><strong>Duration:</strong> ${booking.duration} Hours</p>-->
+<!--                                <p><strong>Party Size:</strong> ${booking.partySize} People</p>-->
+<!--                                <p><strong>Name:</strong> ${booking.name}</p>-->
+<!--                            </div>-->
+<!--                        `;-->
+<!--            resultsContainer.appendChild(card);-->
+<!--          });-->
+<!--        }-->
+<!--      } else {-->
+<!--        resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Error: ${result.error}</p>`;-->
+<!--      }-->
+<!--    } catch (error) {-->
+<!--      console.error("Network Error:", error);-->
+<!--      searchBtn.innerText = "Search";-->
+<!--      searchBtn.disabled = false;-->
+<!--      resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Failed to connect to the server.</p>`;-->
+<!--    }-->
+<!--  }-->
+<!--</script>-->
+
+<!--</body>-->
+<!--</html>-->
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>SEARCH RESERVATION - 1383 Karaoke Bar & KTV</title>
   <link rel="stylesheet" href="../styles/managebooking.css">
 </head>
 <body>
 
+<div class="background-glow-1"></div>
+<div class="background-glow-2"></div>
+
 <nav class="top-nav">
   <div class="logo">1383 Karaoke Bar & KTV</div>
-  <div class="nav-links">
+
+  <div class="hamburger" onclick="toggleMobileMenu()">
+    <span></span>
+    <span></span>
+    <span></span>
+  </div>
+
+  <div class="nav-links" id="mobile-nav">
     <a href="homeindex.html">HOME</a>
     <a href="booking.html">RESERVE</a>
     <a href="managebooking.html" class="active">SEARCH YOUR RESERVATION</a>
+    <a href="legal.html">POLICIES</a>
   </div>
 </nav>
 
@@ -21,7 +146,7 @@
   <h1 class="manage-title">Find Your Reservation</h1>
   <p class="manage-subtitle">Enter the phone number you used during booking.</p>
 
-  <div class="search-box">
+  <div class="search-bar-inline">
     <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 1234567890" onkeypress="handleEnter(event)">
     <button class="btn-primary" onclick="searchBooking()" id="search-btn">Search</button>
   </div>
@@ -31,6 +156,14 @@
 </div>
 
 <script>
+  // 🌟 侧边抽屉菜单动画控制
+  function toggleMobileMenu() {
+    const nav = document.getElementById('mobile-nav');
+    const hamburger = document.querySelector('.hamburger');
+    if (nav) nav.classList.toggle('open');
+    if (hamburger) hamburger.classList.toggle('toggle');
+  }
+
   // 允许用户按回车键触发搜索
   function handleEnter(event) {
     if (event.key === 'Enter') {
@@ -54,8 +187,6 @@
     resultsContainer.innerHTML = '<p style="text-align:center; color: var(--text-muted);">Looking for your bookings...</p>';
 
     try {
-      // 调用后端的查询 API
-      // const response = await fetch(`http://localhost:3000/api/book/search/${phoneInput}`);
       const response = await fetch(`/api/book/search/${phoneInput}`);
       const result = await response.json();
 
@@ -66,7 +197,7 @@
         if (result.data.length === 0) {
           // 没查到数据
           resultsContainer.innerHTML = `
-                        <div style="text-align:center; padding: 40px; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color);">
+                        <div style="text-align:center; padding: 40px; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color); backdrop-filter: blur(10px);">
                             <h3 style="color: var(--text-main);">No Bookings Found</h3>
                             <p style="color: var(--text-muted);">We couldn't find any reservations under the phone number <strong>${phoneInput}</strong>.</p>
                         </div>

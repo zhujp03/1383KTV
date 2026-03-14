@@ -94,13 +94,30 @@
 <div class="background-glow-1"></div>
 <div class="background-glow-2"></div>
 
+<!--<nav class="top-nav">-->
+<!--    <div class="logo">1383 Karaoke Bar & KTV</div>-->
+<!--    <div class="nav-links">-->
+<!--        <a href="homeindex.html">HOME</a>-->
+<!--        <a href="booking.html">RESERVATION</a>-->
+<!--        <a href="managebooking.html">SEARCH YOUR RESERVATION</a>-->
+<!--        <a href="legal.html" class="active">POLICIES</a>-->
+<!--    </div>-->
+<!--</nav>-->
+
 <nav class="top-nav">
-    <div class="logo">1383 Karaoke Bar & KTV</div>
-    <div class="nav-links">
+    <div class="logo">1383 KTV</div>
+
+    <div class="hamburger" onclick="toggleMenu()">
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+
+    <div class="nav-links" id="nav-links">
         <a href="homeindex.html">HOME</a>
-        <a href="booking.html">RESERVATION</a>
+        <a href="booking.html">RESERVE</a>
         <a href="managebooking.html">SEARCH YOUR RESERVATION</a>
-        <a href="legal.html" class="active">POLICIES</a>
+        <a href="legal.html">POLICIES</a>
     </div>
 </nav>
 
@@ -187,6 +204,16 @@
 <footer>
     <p>© 2026 1383 Karaoke Bar & KTV. All rights reserved. | Ottawa, ON</p>
 </footer>
+<script>
+    // 控制汉堡菜单展开/收起的 JS
+    function toggleMenu() {
+        const navLinks = document.getElementById('nav-links');
+        const hamburger = document.querySelector('.hamburger');
+
+        navLinks.classList.toggle('show');
+        hamburger.classList.toggle('active'); // 用于将三条线变成 X 动画
+    }
+</script>
 
 </body>
 </html>
