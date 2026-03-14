@@ -2,7 +2,6 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-<!--    <meta name="viewport" content="width=device-width, initial-scale=1.0">-->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>1383 KTV - Premium Karaoke Experience</title>
     <link rel="stylesheet" href="../styles/homepage.css">
@@ -15,8 +14,15 @@
 
 <header class="navbar">
     <div class="logo">1383 Karaoke Bar & KTV</div>
+
+    <div class="hamburger" onclick="toggleMobileMenu()">
+        <span></span>
+        <span></span>
+        <span></span>
+    </div>
+
     <nav>
-        <ul>
+        <ul id="mobile-nav">
             <li><a href="homeindex.html" class="active">HOME</a></li>
             <li><a href="booking.html">RESERVATION</a></li>
             <li><a href="managebooking.html">SEARCH YOUR RESERVATION</a></li>
@@ -38,7 +44,7 @@
                 <a href="#menus" class="btn-secondary"><i class="fa-solid fa-utensils"></i> Menu</a>
             </div>
 
-            <p class="hero-contact">For same day reservation call <strong>6138671383</strong></p>
+            <p class="hero-contact">For same day reservation call <strong>(613) 867-1383</strong></p>
         </div>
     </section>
 
@@ -123,34 +129,6 @@
         </div>
     </section>
 
-<!--    <section id = "menus"  class="menu-section">-->
-<!--        <h2><span class="highlight">FOOD & DRINKS</span> MENU</h2>-->
-
-<!--        <div class="menu-grid-container">-->
-
-<!--            <div class="menu-item">-->
-<!--                <img src="../menu_pic/pic_001.jpg" alt="Drink Menu Part 1" class="menu-img">-->
-<!--                <div class="menu-placeholder-text">Menu Image 1</div>-->
-<!--            </div>-->
-
-<!--            <div class="menu-item">-->
-<!--                <img src="../menu_pic/pic_002.jpg" alt="Drink Menu Part 2" class="menu-img">-->
-<!--                <div class="menu-placeholder-text">Menu Image 2</div>-->
-<!--            </div>-->
-
-<!--            <div class="menu-item">-->
-<!--                <img src="../menu_pic/pic_003.jpg" alt="Drink Menu Part 1" class="menu-img">-->
-<!--                <div class="menu-placeholder-text">Menu Image 3</div>-->
-<!--            </div>-->
-
-<!--            <div class="menu-item">-->
-<!--                <img src="../menu_pic/pic_004.jpg" alt="Food Menu Part 2" class="menu-img">-->
-<!--                <div class="menu-placeholder-text">Menu Image 4</div>-->
-<!--            </div>-->
-
-<!--        </div>-->
-<!--    </section>-->
-
     <section id="menus" class="menu-section">
         <h2><span class="highlight">FOOD & DRINKS</span> MENU</h2>
 
@@ -178,16 +156,15 @@
     </section>
 
     <div id="custom-lightbox" class="lightbox-overlay">
-        <span class="lightbox-close" onclick="closeLightbox()">&times;</span>
-        <button class="lightbox-prev" onclick="changeImage(-1)">&#10094;</button>
+        <span class="lightbox-close" onclick="closeLightbox()">×</span>
+        <button class="lightbox-prev" onclick="changeImage(-1)">❮</button>
 
         <img id="lightbox-img" src="" alt="Menu Fullscreen">
 
-        <button class="lightbox-next" onclick="changeImage(1)">&#10095;</button>
+        <button class="lightbox-next" onclick="changeImage(1)">❯</button>
     </div>
 
     <script>
-        // 把你所有的菜单图片路径存进一个数组，顺序必须和 HTML 里的一致
         const menuImages = [
             "../menu_pic/pic_001.jpg",
             "../menu_pic/pic_002.jpg",
@@ -199,25 +176,21 @@
         const lightbox = document.getElementById('custom-lightbox');
         const lightboxImg = document.getElementById('lightbox-img');
 
-        // 打开灯箱
         function openLightbox(index) {
             currentImageIndex = index;
             lightboxImg.src = menuImages[currentImageIndex];
             lightbox.style.display = "flex";
-            document.body.style.overflow = "hidden"; // 防止背景页面滚动
+            document.body.style.overflow = "hidden";
         }
 
-        // 关闭灯箱
         function closeLightbox() {
             lightbox.style.display = "none";
-            document.body.style.overflow = "auto"; // 恢复背景滚动
+            document.body.style.overflow = "auto";
         }
 
-        // 切换上一张/下一张
         function changeImage(direction) {
             currentImageIndex += direction;
 
-            // 循环逻辑：到了最后一张再点下一张，回到第一张
             if (currentImageIndex >= menuImages.length) {
                 currentImageIndex = 0;
             } else if (currentImageIndex < 0) {
@@ -227,7 +200,6 @@
             lightboxImg.src = menuImages[currentImageIndex];
         }
 
-        // 点击黑色背景也能关闭
         lightbox.addEventListener('click', function(e) {
             if (e.target !== lightboxImg && e.target.tagName !== 'BUTTON') {
                 closeLightbox();
@@ -249,7 +221,7 @@
                 <div class="contact-card">
                     <i class="fa-solid fa-phone"></i>
                     <div>
-                        <p class="contact-title">6138671383</p>
+                        <p class="contact-title">(613) 867-1383</p>
                         <p class="contact-desc">Call for inquiries</p>
                     </div>
                 </div>
@@ -279,13 +251,25 @@
             <div class="map-container">
                 <iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2803.4595624815397!2d-75.74068392368996!3d45.35972067107232!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x4cce07c619c255c5%3A0x4207d5f6fa7381dc!2s1383%20Karaoke%20Bar%20%26%20KTV!5e0!3m2!1szh-CN!2sca!4v1773193513498!5m2!1szh-CN!2sca" width="100%" height="100%" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade" class="real-map"></iframe>
             </div>
-        </div> </section>
+        </div>
+    </section>
 </main>
 
 <footer>
     <p>© 2026 1383 Karaoke Bar & KTV. All rights reserved. | Ottawa, ON</p>
 </footer>
 
+<script>
+    function toggleMobileMenu() {
+        // 获取侧边栏和汉堡按钮
+        const nav = document.getElementById('mobile-nav');
+        const hamburger = document.querySelector('.hamburger');
+
+        // 切换 .open 和 .toggle 状态触发 CSS 动画
+        if (nav) nav.classList.toggle('open');
+        if (hamburger) hamburger.classList.toggle('toggle');
+    }
+</script>
+
 </body>
 </html>
-
