@@ -258,7 +258,7 @@
 <!--    </div>-->
 <!--</nav>-->
 <nav class="top-nav">
-    <div class="logo">1383 KTV</div>
+    <div class="logo">1383 Karaoke Bar & KTV</div>
 
     <div class="hamburger" onclick="toggleMenu()">
         <span></span>
@@ -288,21 +288,21 @@
         <p class="step-subtitle">Pick a room that fits your party</p>
 
         <div class="rooms-grid">
-            <div class="room-card" onclick="selectRoom('Small Room', this)">
+            <div class="room-card" data-room-key="small" onclick="selectRoom('Small Room', this)">
                 <div class="card-header">
                     <h3>Small Room</h3>
                     <span class="price">$55/hr</span>
                 </div>
                 <p class="capacity">👥 1-8 people</p>
             </div>
-            <div class="room-card" onclick="selectRoom('Medium Room', this)">
+            <div class="room-card" data-room-key="medium" onclick="selectRoom('Medium Room', this)">
                 <div class="card-header">
                     <h3>Medium Room</h3>
                     <span class="price">$65/hr</span>
                 </div>
                 <p class="capacity">👥 1-12 people</p>
             </div>
-            <div class="room-card" onclick="selectRoom('VIP Room', this)">
+            <div class="room-card" data-room-key="vip" onclick="selectRoom('VIP Room', this)">
                 <div class="card-header">
                     <h3>VIP Room</h3>
                     <span class="price">$85/hr</span>
@@ -394,10 +394,10 @@
 
 <div class="modal-overlay" id="validation-modal" onclick="handleModalBackdropClick(event)">
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="validation-modal-title">
-        <h3 id="validation-modal-title">Input Error</h3>
+        <h3 id="validation-modal-title">Notice</h3>
         <p id="validation-modal-message">Please check your input and try again.</p>
         <div class="modal-actions">
-            <button class="next-btn" type="button" onclick="closeValidationModal()">OK</button>
+            <button class="next-btn" id="validation-modal-ok-btn" type="button" onclick="closeValidationModal()">OK</button>
         </div>
     </div>
 </div>
@@ -413,6 +413,7 @@
     };
 
     let currentDayBookings = [];
+    let modalCloseHandler = null;
 
     // 🌟 包厢人数上限配置
     const ROOM_MAX_PEOPLE = {
@@ -428,10 +429,36 @@
         "Large Room": 2
     };
 
+    const ROOM_QUERY_KEY_MAP = {
+        small: "small",
+        medium: "medium",
+        vip: "vip",
+        large: "vip",
+        "vip-room": "vip",
+        "large-room": "vip"
+    };
+
     window.onload = function() {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('booking-date').setAttribute('min', today);
+        applyPreselectedRoomFromQuery();
     };
+
+    function applyPreselectedRoomFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const roomQuery = (params.get('room') || '').trim().toLowerCase();
+        const roomKey = ROOM_QUERY_KEY_MAP[roomQuery];
+
+        if (!roomKey) return;
+
+        const roomCard = document.querySelector(`.room-card[data-room-key="${roomKey}"]`);
+        if (!roomCard) return;
+
+        const roomName = roomCard.querySelector('.card-header h3')?.innerText?.trim();
+        if (!roomName) return;
+
+        selectRoom(roomName, roomCard);
+    }
 
     function goToStep(stepNumber) {
         document.querySelectorAll('.step-content').forEach(el => el.style.display = 'none');
@@ -540,7 +567,10 @@
 
         // 🌟 需求1: 选择了 3 小时及以上，立刻阻断流程并提示打电话
         if (durationVal && parseInt(durationVal) >= 3) {
-            alert('For bookings 3 hours or longer, please call us directly to arrange special pricing and availability: 6138671383');
+            openAppModal(
+                'For bookings of 3 hours or longer, please call us at 613-867-1383. We will help you arrange pricing and availability right away.',
+                { title: 'Please Call Us', buttonText: 'Got it' }
+            );
 
             // 重置 duration 选择，隐藏下方的下一步按钮，彻底阻断线上预订
             document.getElementById('booking-duration').value = "";
@@ -688,15 +718,33 @@
         return /^\d{10,11}$/.test(phone);
     }
 
-    function openValidationModal(message) {
+    function openAppModal(message, options = {}) {
+        const { title = 'Notice', buttonText = 'OK', onClose = null } = options;
         const modal = document.getElementById('validation-modal');
+        const titleNode = document.getElementById('validation-modal-title');
         const messageNode = document.getElementById('validation-modal-message');
+        const okBtn = document.getElementById('validation-modal-ok-btn');
+
+        titleNode.textContent = title;
         messageNode.textContent = message;
+        okBtn.textContent = buttonText;
+        modalCloseHandler = onClose;
         modal.classList.add('show');
+    }
+
+    function openValidationModal(message) {
+        openAppModal(message, { title: 'Input Error', buttonText: 'OK' });
     }
 
     function closeValidationModal() {
         document.getElementById('validation-modal').classList.remove('show');
+        if (typeof modalCloseHandler === 'function') {
+            const callback = modalCloseHandler;
+            modalCloseHandler = null;
+            callback();
+            return;
+        }
+        modalCloseHandler = null;
     }
 
     function handleModalBackdropClick(event) {
@@ -741,11 +789,21 @@
             const result = await response.json();
 
             if (response.ok) {
-                // alert(`Reservation request has been sent, please wait for our confirmation SMS`);
-                alert("Thank you for choosing 1383 Karaoke Bar & KTV!\n\n🎤 Request received! We're getting things sorted for you. We'll text you shortly with the deposit info to secure your booking.");
-                window.location.href = "homeindex.html";
+                openAppModal(
+                    "Thank you for choosing 1383 Karaoke Bar & KTV! Your booking request is in. We are preparing the details now and will text you soon with deposit information to secure your reservation.",
+                    {
+                        title: 'Request Received',
+                        buttonText: 'Back to Home',
+                        onClose: () => {
+                            window.location.href = 'homeindex.html';
+                        }
+                    }
+                );
             } else {
-                alert('Error: ' + result.error);
+                const serverMessage = result && result.error
+                    ? `We could not submit your booking: ${result.error}`
+                    : 'We could not submit your booking right now. Please try again in a moment.';
+                openAppModal(serverMessage, { title: 'Booking Not Submitted', buttonText: 'OK' });
                 if (confirmBtn) {
                     confirmBtn.innerText = "Confirm Booking";
                     confirmBtn.disabled = false;
@@ -753,7 +811,10 @@
             }
         } catch (error) {
             console.error('发生网络请求错误 (Network Error):', error);
-            alert('Cannot connect to the server. Make sure Node.js is running.');
+            openAppModal(
+                'We cannot connect to the server right now. Please check your connection and try again.',
+                { title: 'Connection Issue', buttonText: 'OK' }
+            );
             if (confirmBtn) {
                 confirmBtn.innerText = "Confirm Booking";
                 confirmBtn.disabled = false;

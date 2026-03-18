@@ -1071,6 +1071,8 @@ section h2 {
 
 .room-info {
     padding: 25px;
+    display: flex;
+    flex-direction: column;
 }
 
 .room-header {
@@ -1103,6 +1105,8 @@ section h2 {
     list-style: none;
     color: var(--text-muted);
     font-size: 0.9rem;
+    margin: 0;
+    padding: 0;
 }
 
 .features-list li {
@@ -1116,6 +1120,27 @@ section h2 {
     color: var(--primary-blue);
     font-size: 0.8rem;
     margin-right: 10px;
+}
+
+.room-book-btn {
+    margin-top: 18px;
+    align-self: flex-end;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border-radius: 20px;
+    border: 1px solid var(--primary-blue);
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.86rem;
+    font-weight: 600;
+    transition: background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.room-book-btn:hover {
+    background-color: var(--primary-blue);
+    box-shadow: 0 0 15px rgba(91, 146, 255, 0.35);
 }
 
 /* =========================================
