@@ -348,7 +348,7 @@ footer {
     /* 1. 导航栏变成一行，两端对齐 */
     .top-nav {
         flex-direction: row !important;
-        justify-content: space-between !important;
+        justify-content: flex-start !important;
         align-items: center !important;
         padding: 15px 20px !important;
         height: 70px !important;
@@ -357,18 +357,21 @@ footer {
     .logo {
         margin-bottom: 0 !important;
         text-align: left;
+        order: 2;
     }
 
     /* 2. 核心：强制显示汉堡按钮 */
     .hamburger {
         display: flex !important;
+        order: 1;
+        margin-right: 14px;
     }
 
-    /* 3. 核心：将菜单变成右侧抽屉，默认隐藏在屏幕外 */
+    /* 3. 核心：将菜单变成左侧抽屉，默认隐藏在屏幕外 */
     .nav-links {
         position: fixed;
         top: 0;
-        right: -100%;
+        left: -100%;
         width: 70%;
         max-width: 320px;
         height: 100vh;
@@ -378,16 +381,16 @@ footer {
         align-items: flex-start;
         gap: 0 !important;
         padding: 90px 0 24px !important;
-        border-left: 1px solid var(--border-color);
-        box-shadow: -20px 0 50px rgba(0, 0, 0, 0.5);
+        border-right: 1px solid var(--border-color);
+        box-shadow: 20px 0 50px rgba(0, 0, 0, 0.5);
         overflow-y: auto;
-        transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1);
         z-index: 1000;
     }
 
     /* 4. 当 JS 添加 show 类时，抽屉滑入 */
     .nav-links.show {
-        right: 0;
+        left: 0;
     }
 
     /* 5. 美化抽屉菜单里的链接 */
@@ -403,8 +406,8 @@ footer {
     .nav-links a:hover, .nav-links a.active {
         background-color: rgba(59, 130, 246, 0.1);
         color: var(--primary-blue);
-        border-right: 4px solid var(--primary-blue);
-        padding-right: 22px !important;
+        border-left: 4px solid var(--primary-blue);
+        padding-left: 22px !important;
     }
 
     /* 6. 卡片内容的适配 */

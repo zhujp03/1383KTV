@@ -454,21 +454,28 @@ body {
     /* --- 导航栏重排 --- */
     .top-nav {
         flex-direction: row !important;
-        justify-content: space-between !important;
+        justify-content: flex-start !important;
         padding: 15px 20px !important;
         height: 70px;
     }
 
-    .logo { margin-bottom: 0 !important; }
+    .logo {
+        margin-bottom: 0 !important;
+        order: 2;
+    }
 
     /* 强制显示汉堡按钮 */
-    .hamburger { display: flex !important; }
+    .hamburger {
+        display: flex !important;
+        order: 1;
+        margin-right: 14px;
+    }
 
     /* --- 🌟 核心：左侧抽屉式菜单 --- */
     .nav-links {
         position: fixed;
         top: 0;
-        right: -100%; /* 默认完全隐藏在屏幕左侧之外 */
+        left: -100%; /* 默认完全隐藏在屏幕左侧之外 */
         width: 70%; /* 菜单拉出时占屏幕 70% 宽度 */
         height: 100vh; /* 撑满全高 */
         background-color: rgba(7, 11, 20, 0.98); /* 不透明深色底 */
@@ -478,15 +485,15 @@ body {
         padding-top: 100px !important; /* 顶部留白避开汉堡按钮 */
         margin: 0 !important;
         gap: 0 !important;
-        transition: right 0.4s cubic-bezier(0.4, 0, 0.2, 1); /* 丝滑的滑动动画 */
+        transition: left 0.4s cubic-bezier(0.4, 0, 0.2, 1); /* 丝滑的滑动动画 */
         z-index: 1000;
-        border-left: 1px solid var(--border-color); /* 给右边加个边框立体感 */
-        box-shadow: -20px 0 50px rgba(0,0,0,0.5); /* 滑出时的阴影 */
+        border-right: 1px solid var(--border-color); /* 给右边加个边框立体感 */
+        box-shadow: 20px 0 50px rgba(0,0,0,0.5); /* 滑出时的阴影 */
     }
 
     /* 当 JS 添加 show 类时，菜单从左边滑入到 0 位置 */
     .nav-links.show {
-        right: 0;
+        left: 0;
     }
 
     /* 菜单内部链接排版：左对齐，加大点击区域 */

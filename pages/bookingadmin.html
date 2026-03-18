@@ -814,6 +814,45 @@
 
         <div class="uni-timetable" id="timetable-container">
         </div>
+
+        <div class="section-header" style="margin-top: 50px;">
+            <h2>Historical Orders (Last 2 Months)</h2>
+            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadHistoryOrders()">🔄 Refresh History</button>
+        </div>
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th>Booking ID</th>
+                <th>Date & Time</th>
+                <th>Room</th>
+                <th>Duration</th>
+                <th>Party Size</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Deposit</th>
+                <th>Created At</th>
+            </tr>
+            </thead>
+            <tbody id="history-orders-body">
+            </tbody>
+        </table>
+
+        <div class="section-header" style="margin-top: 50px;">
+            <h2>Valid Customers (Name + Phone)</h2>
+            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadValidCustomers()">🔄 Refresh Customers</button>
+        </div>
+        <table class="admin-table">
+            <thead>
+            <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>First Seen</th>
+                <th>Last Seen</th>
+            </tr>
+            </thead>
+            <tbody id="valid-customers-body">
+            </tbody>
+        </table>
     </section>
 
     <section id="tab-settings" class="content-section">
@@ -987,6 +1026,8 @@
         document.getElementById('dashboard-view').style.display = 'block';
         document.getElementById('welcome-msg').innerText = `Welcome, ${username}`;
         loadBookings();
+        loadHistoryOrders();
+        loadValidCustomers();
     }
 
     function switchTab(tabName) {
@@ -1016,6 +1057,8 @@
                 tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No bookings found.</td></tr>';
                 allBookingsData = [];
                 renderWeeklyTimetable(); // 清空并渲染空的周历
+                loadHistoryOrders();
+                loadValidCustomers();
                 return;
             }
 
@@ -1051,10 +1094,90 @@
 
             // 2. 渲染可视化周历
             renderWeeklyTimetable();
+            loadHistoryOrders();
+            loadValidCustomers();
 
         } catch (err) {
             tbody.innerHTML = '<tr><td colspan="9" style="color: red;">Failed to load data.</td></tr>';
             console.error("加载数据失败:", err);
+        }
+    }
+
+    async function loadHistoryOrders() {
+        const tbody = document.getElementById('history-orders-body');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>';
+
+        try {
+            const res = await fetch('/api/admin/history-orders', { headers: getAuthHeaders() });
+            if (res.status === 401) return handleLogout();
+
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.error || 'Failed to load history orders');
+
+            if (!result.data || result.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: var(--text-muted);">No historical orders in the last 2 months.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            result.data.forEach(order => {
+                const tr = document.createElement('tr');
+                const isPaid = String(order.deposit || '').toLowerCase() === 'yes';
+                const depositBadge = isPaid
+                    ? '<span style="background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">Paid</span>'
+                    : '<span style="background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">No</span>';
+
+                tr.innerHTML = `
+                    <td>#${order.booking_id || '-'}</td>
+                    <td style="color: var(--primary-blue); font-weight: bold;">${order.date} <br> ${order.time}</td>
+                    <td>${order.room}</td>
+                    <td>${order.duration} Hrs</td>
+                    <td>${order.partySize}</td>
+                    <td>${order.name}</td>
+                    <td>${order.phone}</td>
+                    <td>${depositBadge}</td>
+                    <td>${order.created_at || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (err) {
+            console.error('Failed to load history orders:', err);
+            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: red;">Failed to load historical orders.</td></tr>';
+        }
+    }
+
+    async function loadValidCustomers() {
+        const tbody = document.getElementById('valid-customers-body');
+        if (!tbody) return;
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>';
+
+        try {
+            const res = await fetch('/api/admin/valid-customers', { headers: getAuthHeaders() });
+            if (res.status === 401) return handleLogout();
+
+            const result = await res.json();
+            if (!res.ok) throw new Error(result.error || 'Failed to load valid customers');
+
+            if (!result.data || result.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No valid customers found.</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = '';
+            result.data.forEach(customer => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${customer.name}</td>
+                    <td>${customer.phone}</td>
+                    <td>${customer.first_seen || '-'}</td>
+                    <td>${customer.last_seen || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        } catch (err) {
+            console.error('Failed to load valid customers:', err);
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: red;">Failed to load valid customers.</td></tr>';
         }
     }
 

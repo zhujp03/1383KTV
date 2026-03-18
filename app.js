@@ -84,6 +84,46 @@ const adminDb = new sqlite3.Database('./admin.db', (err) => {
     }
 });
 
+// 历史订单数据库（最多保留两个月）
+const historyDb = new sqlite3.Database('./history_orders.db', (err) => {
+    if (err) {
+        console.error('History DB failed:', err.message);
+    } else {
+        console.log('✅ Connected to history_orders.db successfully.');
+        historyDb.run(`CREATE TABLE IF NOT EXISTS historical_orders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            booking_id INTEGER UNIQUE,
+            room TEXT NOT NULL,
+            partySize INTEGER NOT NULL,
+            date TEXT NOT NULL,
+            time TEXT NOT NULL,
+            duration TEXT NOT NULL,
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            deposit TEXT DEFAULT 'No',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`, (tableErr) => {
+            if (!tableErr) cleanupOldHistoricalOrders();
+        });
+    }
+});
+
+// 有效客户数据库（姓名+手机号复合主键）
+const customerDb = new sqlite3.Database('./valid_customers.db', (err) => {
+    if (err) {
+        console.error('Valid Customer DB failed:', err.message);
+    } else {
+        console.log('✅ Connected to valid_customers.db successfully.');
+        customerDb.run(`CREATE TABLE IF NOT EXISTS valid_customers (
+            name TEXT NOT NULL,
+            phone TEXT NOT NULL,
+            first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (name, phone)
+        )`);
+    }
+});
+
 // ==========================================
 // 3. 通用辅助函数与权限中间件
 // ==========================================
@@ -99,6 +139,68 @@ function cleanupOldBookings() {
         }
     });
 }
+
+// 自动清理两个月前的历史订单
+function cleanupOldHistoricalOrders() {
+    const sql = `DELETE FROM historical_orders WHERE created_at < datetime('now', 'localtime', '-2 months')`;
+    historyDb.run(sql, function(err) {
+        if (err) {
+            console.error('History auto-cleanup failed:', err);
+        } else if (this.changes > 0) {
+            console.log(`🧹 History cleanup executed: Deleted ${this.changes} outdated historical orders.`);
+        }
+    });
+}
+
+function normalizeDepositValue(deposit) {
+    return String(deposit || '').trim().toLowerCase() === 'yes' ? 'Yes' : 'No';
+}
+
+function syncValidCustomer(name, phone) {
+    const safeName = String(name || '').trim();
+    const safePhone = String(phone || '').trim();
+    if (!safeName || !safePhone) return;
+
+    const sql = `INSERT INTO valid_customers (name, phone)
+                 VALUES (?, ?)
+                 ON CONFLICT(name, phone)
+                 DO UPDATE SET last_seen = CURRENT_TIMESTAMP`;
+    customerDb.run(sql, [safeName, safePhone], (err) => {
+        if (err) console.error('Failed to sync valid customer:', err.message);
+    });
+}
+
+function syncHistoricalOrder(booking) {
+    const sql = `INSERT INTO historical_orders (booking_id, room, partySize, date, time, duration, name, phone, deposit)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 ON CONFLICT(booking_id)
+                 DO UPDATE SET
+                    room = excluded.room,
+                    partySize = excluded.partySize,
+                    date = excluded.date,
+                    time = excluded.time,
+                    duration = excluded.duration,
+                    name = excluded.name,
+                    phone = excluded.phone,
+                    deposit = excluded.deposit`;
+
+    historyDb.run(sql, [
+        booking.booking_id,
+        booking.room,
+        booking.partySize,
+        booking.date,
+        booking.time,
+        booking.duration,
+        booking.name,
+        booking.phone,
+        normalizeDepositValue(booking.deposit)
+    ], (err) => {
+        if (err) console.error('Failed to sync historical order:', err.message);
+    });
+}
+
+// 每天执行一次历史订单清理
+setInterval(cleanupOldHistoricalOrders, 24 * 60 * 60 * 1000);
 
 // 极简身份验证中间件 (用于保护后台 API)
 function checkAdminLogin(req, res, next) {
@@ -124,7 +226,22 @@ app.post('/api/book', (req, res) => {
             console.error('Error inserting data:', err);
             return res.status(500).json({ error: 'Failed to save booking to database.' });
         }
-        res.status(200).json({ message: 'Booking successful!', bookingId: this.lastID });
+        const bookingId = this.lastID;
+
+        syncHistoricalOrder({
+            booking_id: bookingId,
+            room,
+            partySize,
+            date,
+            time,
+            duration,
+            name,
+            phone,
+            deposit: 'No'
+        });
+        syncValidCustomer(name, phone);
+
+        res.status(200).json({ message: 'Booking successful!', bookingId });
     });
 });
 
@@ -177,6 +294,7 @@ app.post('/api/admin/login', (req, res) => {
 
         // 登录成功时触发一次过期清理
         cleanupOldBookings();
+        cleanupOldHistoricalOrders();
 
         res.json({ message: 'Login successful', username: row.username });
     });
@@ -187,6 +305,24 @@ app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
     const sql = `SELECT * FROM bookings ORDER BY date ASC, time ASC`;
     db.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Failed to fetch bookings.' });
+        res.status(200).json({ total: rows.length, data: rows });
+    });
+});
+
+// 历史订单列表（最近两个月）
+app.get('/api/admin/history-orders', checkAdminLogin, (req, res) => {
+    const sql = `SELECT * FROM historical_orders ORDER BY created_at DESC, date DESC, time DESC`;
+    historyDb.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Failed to fetch historical orders.' });
+        res.status(200).json({ total: rows.length, data: rows });
+    });
+});
+
+// 有效客户列表（去重：name + phone）
+app.get('/api/admin/valid-customers', checkAdminLogin, (req, res) => {
+    const sql = `SELECT name, phone, first_seen, last_seen FROM valid_customers ORDER BY last_seen DESC`;
+    customerDb.all(sql, [], (err, rows) => {
+        if (err) return res.status(500).json({ error: 'Failed to fetch valid customers.' });
         res.status(200).json({ total: rows.length, data: rows });
     });
 });
@@ -259,6 +395,7 @@ app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
     const bookingId = req.params.id;
     // 🌟 新增接收 deposit 字段
     const { room, partySize, date, time, duration, name, phone, deposit } = req.body;
+    const normalizedDeposit = normalizeDepositValue(deposit);
 
     // 🌟 SQL 增加 deposit 更新
     const sql = `UPDATE bookings 
@@ -266,8 +403,22 @@ app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
                  WHERE id = ?`;
 
     // 🌟 传入 deposit 参数，如果没有传默认给 'No'
-    db.run(sql, [room, partySize, date, time, duration, name, phone, deposit || 'No', bookingId], function(err) {
+    db.run(sql, [room, partySize, date, time, duration, name, phone, normalizedDeposit, bookingId], function(err) {
         if (err) return res.status(500).json({ error: 'Failed to update booking.' });
+
+        syncHistoricalOrder({
+            booking_id: Number(bookingId),
+            room,
+            partySize,
+            date,
+            time,
+            duration,
+            name,
+            phone,
+            deposit: normalizedDeposit
+        });
+        syncValidCustomer(name, phone);
+
         res.json({ message: 'Booking updated successfully.' });
     });
 });
