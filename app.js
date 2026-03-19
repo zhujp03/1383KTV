@@ -3,9 +3,11 @@ const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
+const bcrypt = require('bcrypt');
 
 const app = express();
 const PORT = 3000;
+const BCRYPT_ROUNDS = 10;
 
 // ==========================================
 // 1. 中间件配置
@@ -80,7 +82,13 @@ const adminDb = new sqlite3.Database('./admin.db', (err) => {
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
-        )`);
+        )`, async (tableErr) => {
+            if (tableErr) {
+                console.error('Failed to prepare admins table:', tableErr.message);
+                return;
+            }
+            await migratePlaintextAdminPasswords();
+        });
     }
 });
 
@@ -159,6 +167,62 @@ function cleanupOldHistoricalOrders() {
 
 function normalizeDepositValue(deposit) {
     return String(deposit || '').trim().toLowerCase() === 'yes' ? 'Yes' : 'No';
+}
+
+function isBcryptHash(value) {
+    return typeof value === 'string' && /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(value);
+}
+
+async function hashPassword(plainPassword) {
+    return bcrypt.hash(String(plainPassword || ''), BCRYPT_ROUNDS);
+}
+
+async function verifyAdminPassword(inputPassword, storedPassword) {
+    if (isBcryptHash(storedPassword)) {
+        return await bcrypt.compare(String(inputPassword || ''), storedPassword);
+    }
+    return String(inputPassword || '') === String(storedPassword || '');
+}
+
+function adminDbGet(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        adminDb.get(sql, params, (err, row) => {
+            if (err) return reject(err);
+            resolve(row);
+        });
+    });
+}
+
+function adminDbAll(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        adminDb.all(sql, params, (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows || []);
+        });
+    });
+}
+
+function adminDbRun(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        adminDb.run(sql, params, function(err) {
+            if (err) return reject(err);
+            resolve(this);
+        });
+    });
+}
+
+async function migratePlaintextAdminPasswords() {
+    try {
+        const admins = await adminDbAll(`SELECT id, username, password FROM admins`);
+        for (const admin of admins) {
+            if (isBcryptHash(admin.password)) continue;
+            const hashed = await hashPassword(admin.password);
+            await adminDbRun(`UPDATE admins SET password = ? WHERE id = ?`, [hashed, admin.id]);
+            console.log(`🔐 Migrated admin password to hash for user: ${admin.username}`);
+        }
+    } catch (err) {
+        console.error('Failed to migrate plaintext admin passwords:', err.message);
+    }
 }
 
 function syncValidCustomer(name, phone) {
@@ -328,12 +392,24 @@ app.get('/api/public/bookings', (req, res) => {
 // ==========================================
 
 // 5.1 管理员登录 API
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
     const { username, password } = req.body;
 
-    adminDb.get("SELECT * FROM admins WHERE username = ? AND password = ?", [username, password], (err, row) => {
-        if (err || !row) {
+    try {
+        const row = await adminDbGet("SELECT * FROM admins WHERE username = ?", [username]);
+        if (!row) {
             return res.status(401).json({ error: 'Invalid username or password.' });
+        }
+
+        const isValid = await verifyAdminPassword(password, row.password);
+        if (!isValid) {
+            return res.status(401).json({ error: 'Invalid username or password.' });
+        }
+
+        // Lazy upgrade: if account is still plaintext, hash it on successful login.
+        if (!isBcryptHash(row.password)) {
+            const hashed = await hashPassword(password);
+            await adminDbRun("UPDATE admins SET password = ? WHERE id = ?", [hashed, row.id]);
         }
 
         // 登录成功时触发一次过期清理
@@ -341,7 +417,10 @@ app.post('/api/admin/login', (req, res) => {
         cleanupOldHistoricalOrders();
 
         res.json({ message: 'Login successful', username: row.username });
-    });
+    } catch (err) {
+        console.error('Admin login failed:', err.message);
+        res.status(500).json({ error: 'Login failed due to server error.' });
+    }
 });
 
 // 5.2 获取所有预订记录 API (受保护)
@@ -379,24 +458,33 @@ app.get('/api/admin/list', checkAdminLogin, (req, res) => {
 });
 
 // 5.4 添加新管理员 API (受保护)
-app.post('/api/admin/add', checkAdminLogin, (req, res) => {
+app.post('/api/admin/add', checkAdminLogin, async (req, res) => {
     const { newUsername, newPassword } = req.body;
 
-    adminDb.run("INSERT INTO admins (username, password) VALUES (?, ?)", [newUsername, newPassword], function(err) {
-        if (err) return res.status(400).json({ error: 'Username already exists.' });
-        res.json({ message: 'New admin added successfully.', id: this.lastID });
-    });
+    try {
+        const hashedPassword = await hashPassword(newPassword);
+        const runResult = await adminDbRun("INSERT INTO admins (username, password) VALUES (?, ?)", [newUsername, hashedPassword]);
+        res.json({ message: 'New admin added successfully.', id: runResult.lastID });
+    } catch (err) {
+        if (String(err.message || '').includes('UNIQUE')) {
+            return res.status(400).json({ error: 'Username already exists.' });
+        }
+        res.status(500).json({ error: 'Failed to add admin.' });
+    }
 });
 
 // 5.5 修改其他管理员密码 API (受保护)
-app.put('/api/admin/password/:id', checkAdminLogin, (req, res) => {
+app.put('/api/admin/password/:id', checkAdminLogin, async (req, res) => {
     const adminIdToUpdate = req.params.id;
     const { newPassword } = req.body;
 
-    adminDb.run("UPDATE admins SET password = ? WHERE id = ?", [newPassword, adminIdToUpdate], function(err) {
-        if (err) return res.status(500).json({ error: 'Failed to update password.' });
+    try {
+        const hashedPassword = await hashPassword(newPassword);
+        await adminDbRun("UPDATE admins SET password = ? WHERE id = ?", [hashedPassword, adminIdToUpdate]);
         res.json({ message: 'Password updated successfully.' });
-    });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to update password.' });
+    }
 });
 
 // 5.6 删除管理员 API (受保护)

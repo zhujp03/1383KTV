@@ -1,5 +1,8 @@
 // setup_db.js - 用于初始化数据库和默认管理员
 const sqlite3 = require('sqlite3').verbose();
+const bcrypt = require('bcrypt');
+
+const BCRYPT_ROUNDS = 10;
 
 // 连接到 admin.db（如果不存在会自动创建）
 const db = new sqlite3.Database('./admin.db', (err) => {
@@ -21,29 +24,40 @@ db.serialize(() => {
         else console.log("✅ admins 表准备就绪");
     });
 
-    // 2. 插入默认的管理员账号密码 (明文)
+    // 2. 插入默认管理员账号密码 (加密)
     // 使用 INSERT OR IGNORE 是为了防止你重复运行这个脚本时报错
     const defaultUser = 'admin';
     const defaultPass = 'admin123';
 
     const sql = `INSERT OR IGNORE INTO admins (username, password) VALUES (?, ?)`;
 
-    db.run(sql, [defaultUser, defaultPass], function(err) {
-        if (err) {
-            return console.error('❌ 插入默认管理员失败:', err.message);
-        }
+    bcrypt.hash(defaultPass, BCRYPT_ROUNDS)
+        .then((hashedPass) => {
+            db.run(sql, [defaultUser, hashedPass], function(err) {
+                if (err) {
+                    return console.error('❌ 插入默认管理员失败:', err.message);
+                }
 
-        // this.changes 会告诉你是否真的插入了新数据
-        if (this.changes > 0) {
-            console.log(`🎉 默认管理员创建成功！\n👉 账号: ${defaultUser}\n👉 密码: ${defaultPass}`);
-        } else {
-            console.log(`⚠️ 默认管理员 '${defaultUser}' 已经存在，跳过创建。`);
-        }
-    });
-});
+                // this.changes 会告诉你是否真的插入了新数据
+                if (this.changes > 0) {
+                    console.log(`🎉 默认管理员创建成功！\n👉 账号: ${defaultUser}\n👉 密码: ${defaultPass}`);
+                } else {
+                    console.log(`⚠️ 默认管理员 '${defaultUser}' 已经存在，跳过创建。`);
+                }
 
-// 执行完毕后安全关闭数据库连接
-db.close((err) => {
-    if (err) return console.error('❌ 关闭数据库失败:', err.message);
-    console.log('🏁 数据库初始化脚本执行完毕！');
+                // 执行完毕后安全关闭数据库连接
+                db.close((closeErr) => {
+                    if (closeErr) return console.error('❌ 关闭数据库失败:', closeErr.message);
+                    console.log('🏁 数据库初始化脚本执行完毕！');
+                });
+            });
+        })
+        .catch((hashErr) => {
+            console.error('❌ 默认密码加密失败:', hashErr.message);
+
+            db.close((closeErr) => {
+                if (closeErr) return console.error('❌ 关闭数据库失败:', closeErr.message);
+                console.log('🏁 数据库初始化脚本执行完毕！');
+            });
+        });
 });
