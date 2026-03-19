@@ -391,6 +391,90 @@ body {
 .booking-details p { margin: 10px 0; font-size: 1.05rem; color: var(--text-muted);}
 .booking-details strong { color: #fff; width: 100px; display: inline-block;}
 
+.booking-actions {
+    margin-top: 20px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.btn-cancel {
+    padding: 10px 20px;
+    background-color: #EF4444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.btn-cancel:hover {
+    background-color: #DC2626;
+}
+
+.btn-danger {
+    padding: 10px 20px;
+    background-color: #EF4444;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.btn-danger:hover {
+    background-color: #DC2626;
+}
+
+.modal-overlay {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.65);
+    z-index: 9999;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.modal-overlay.show {
+    display: flex;
+}
+
+.modal-box {
+    width: 100%;
+    max-width: 420px;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 14px;
+    padding: 22px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    text-align: left;
+}
+
+.modal-box h3 {
+    margin: 0 0 10px 0;
+    font-size: 1.1rem;
+    color: var(--text-main);
+}
+
+.modal-box p {
+    margin: 0 0 18px 0;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
 /* =========================================
    📱 6. 移动端终极整合适配
    ========================================= */

@@ -103,7 +103,12 @@ const historyDb = new sqlite3.Database('./history_orders.db', (err) => {
             deposit TEXT DEFAULT 'No',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`, (tableErr) => {
-            if (!tableErr) cleanupOldHistoricalOrders();
+            if (tableErr) return;
+
+            // Enforce historical_orders as deposit=Yes only; clear legacy No rows once at startup.
+            historyDb.run(`DELETE FROM historical_orders WHERE LOWER(TRIM(COALESCE(deposit, ''))) != 'yes'`, () => {
+                cleanupOldHistoricalOrders();
+            });
         });
     }
 });
@@ -170,7 +175,33 @@ function syncValidCustomer(name, phone) {
     });
 }
 
+// 删除 valid_customer (用于 deposit 回滚)
+function removeValidCustomer(name, phone) {
+    const safeName = String(name || '').trim();
+    const safePhone = String(phone || '').trim();
+    if (!safeName || !safePhone) return;
+
+    const sql = `DELETE FROM valid_customers WHERE name = ? AND phone = ?`;
+    customerDb.run(sql, [safeName, safePhone], (err) => {
+        if (err) console.error('Failed to remove valid customer:', err.message);
+    });
+}
+
+// 删除 historical_order (用于 deposit 回滚)
+function removeHistoricalOrder(bookingId) {
+    const sql = `DELETE FROM historical_orders WHERE booking_id = ?`;
+    historyDb.run(sql, [bookingId], (err) => {
+        if (err) console.error('Failed to remove historical order:', err.message);
+    });
+}
+
 function syncHistoricalOrder(booking) {
+    const normalizedDeposit = normalizeDepositValue(booking.deposit);
+    if (normalizedDeposit !== 'Yes') {
+        removeHistoricalOrder(Number(booking.booking_id));
+        return;
+    }
+
     const sql = `INSERT INTO historical_orders (booking_id, room, partySize, date, time, duration, name, phone, deposit)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(booking_id)
@@ -193,7 +224,7 @@ function syncHistoricalOrder(booking) {
         booking.duration,
         booking.name,
         booking.phone,
-        normalizeDepositValue(booking.deposit)
+        normalizedDeposit
     ], (err) => {
         if (err) console.error('Failed to sync historical order:', err.message);
     });
@@ -227,18 +258,6 @@ app.post('/api/book', (req, res) => {
             return res.status(500).json({ error: 'Failed to save booking to database.' });
         }
         const bookingId = this.lastID;
-
-        syncHistoricalOrder({
-            booking_id: bookingId,
-            room,
-            partySize,
-            date,
-            time,
-            duration,
-            name,
-            phone,
-            deposit: 'No'
-        });
         syncValidCustomer(name, phone);
 
         res.status(200).json({ message: 'Booking successful!', bookingId });
@@ -258,6 +277,31 @@ app.get('/api/book/search/:phone', (req, res) => {
             return res.status(500).json({ error: 'Failed to search bookings.' });
         }
         res.status(200).json({ data: rows });
+    });
+});
+
+// 4.3 客户取消预订 API (用户输入手机号和预订 ID)
+app.delete('/api/book/cancel/:id/:phone', (req, res) => {
+    const bookingId = req.params.id;
+    const phone = req.params.phone;
+
+    // 验证这个预订是否属于这个手机号
+    db.get(`SELECT id, name, phone, deposit FROM bookings WHERE id = ? AND phone = ?`, [bookingId, phone], (err, booking) => {
+        if (err) return res.status(500).json({ error: 'Database error.' });
+        if (!booking) return res.status(404).json({ error: 'Booking not found or phone number does not match.' });
+
+        // 删除 bookings 表里的记录
+        db.run(`DELETE FROM bookings WHERE id = ?`, [bookingId], function(bookingErr) {
+            if (bookingErr) return res.status(500).json({ error: 'Failed to cancel booking.' });
+
+            // 如果这个预订的 deposit 是 Yes，也要从 history_orders 和 valid_customers 删除
+            if (normalizeDepositValue(booking.deposit) === 'Yes') {
+                removeHistoricalOrder(Number(bookingId));
+                removeValidCustomer(booking.name, booking.phone);
+            }
+
+            res.json({ message: 'Booking cancelled successfully.' });
+        });
     });
 });
 
@@ -311,7 +355,7 @@ app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
 
 // 历史订单列表（最近两个月）
 app.get('/api/admin/history-orders', checkAdminLogin, (req, res) => {
-    const sql = `SELECT * FROM historical_orders ORDER BY created_at DESC, date DESC, time DESC`;
+    const sql = `SELECT * FROM historical_orders WHERE deposit = 'Yes' ORDER BY created_at DESC, date DESC, time DESC`;
     historyDb.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Failed to fetch historical orders.' });
         res.status(200).json({ total: rows.length, data: rows });
@@ -397,29 +441,46 @@ app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
     const { room, partySize, date, time, duration, name, phone, deposit } = req.body;
     const normalizedDeposit = normalizeDepositValue(deposit);
 
-    // 🌟 SQL 增加 deposit 更新
-    const sql = `UPDATE bookings 
-                 SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?, deposit = ? 
-                 WHERE id = ?`;
+    // 先查询旧的 deposit 状态，用于判断是否需要回滚
+    db.get(`SELECT deposit FROM bookings WHERE id = ?`, [bookingId], (err, oldRow) => {
+        if (err) return res.status(500).json({ error: 'Failed to fetch old booking data.' });
 
-    // 🌟 传入 deposit 参数，如果没有传默认给 'No'
-    db.run(sql, [room, partySize, date, time, duration, name, phone, normalizedDeposit, bookingId], function(err) {
-        if (err) return res.status(500).json({ error: 'Failed to update booking.' });
+        const oldDeposit = oldRow ? normalizeDepositValue(oldRow.deposit) : 'No';
+        const isDepositChanged = oldDeposit !== normalizedDeposit;
+        const isDepositRevertedFromYesToNo = oldDeposit === 'Yes' && normalizedDeposit === 'No';
 
-        syncHistoricalOrder({
-            booking_id: Number(bookingId),
-            room,
-            partySize,
-            date,
-            time,
-            duration,
-            name,
-            phone,
-            deposit: normalizedDeposit
+        // 🌟 SQL 增加 deposit 更新
+        const sql = `UPDATE bookings 
+                     SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?, deposit = ? 
+                     WHERE id = ?`;
+
+        // 🌟 传入 deposit 参数，如果没有传默认给 'No'
+        db.run(sql, [room, partySize, date, time, duration, name, phone, normalizedDeposit, bookingId], function(err) {
+            if (err) return res.status(500).json({ error: 'Failed to update booking.' });
+
+            // 🌟 核心逻辑：处理 deposit 状态变化
+            if (isDepositRevertedFromYesToNo) {
+                // 如果从 Yes 改回 No，删除 history_orders 和 valid_customers 里的记录
+                removeHistoricalOrder(Number(bookingId));
+                removeValidCustomer(name, phone);
+            } else if (normalizedDeposit === 'Yes') {
+                // 如果改成 Yes，添加到 history_orders 和 valid_customers
+                syncHistoricalOrder({
+                    booking_id: Number(bookingId),
+                    room,
+                    partySize,
+                    date,
+                    time,
+                    duration,
+                    name,
+                    phone,
+                    deposit: normalizedDeposit
+                });
+                syncValidCustomer(name, phone);
+            }
+
+            res.json({ message: 'Booking updated successfully.' });
         });
-        syncValidCustomer(name, phone);
-
-        res.json({ message: 'Booking updated successfully.' });
     });
 });
 

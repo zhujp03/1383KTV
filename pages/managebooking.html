@@ -29,15 +29,27 @@
 </nav>
 
 <div class="manage-container">
-  <h1 class="manage-title">Find Your Reservation</h1>
-  <p class="manage-subtitle">Enter the phone number you used during booking.</p>
+   <h1 class="manage-title">Find Your Reservation</h1>
+   <p class="manage-subtitle">Enter the phone number you used during booking.</p>
 
-  <div class="search-bar-inline">
-    <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 1234567890" onkeypress="handleEnter(event)">
-    <button class="btn-primary" onclick="searchBooking()" id="search-btn">Search</button>
-  </div>
+   <div class="search-bar-inline">
+     <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 1234567890" onkeypress="handleEnter(event)">
+     <button class="btn-primary" onclick="searchBooking()" id="search-btn">Search</button>
+   </div>
 
-  <div id="results-container" class="results-container">
+   <div id="results-container" class="results-container">
+   </div>
+</div>
+
+<!-- 取消预约确认弹窗 -->
+<div id="cancel-modal" class="modal-overlay" onclick="handleCancelModalBackdropClick(event)">
+  <div class="modal-box" role="dialog" aria-modal="true">
+    <h3>Cancel Booking?</h3>
+    <p id="cancel-modal-message" style="color: var(--text-muted); margin: 15px 0;">Are you sure you want to cancel this booking?</p>
+    <div class="modal-actions">
+      <button class="btn-cancel" style="background: transparent; border: 1px solid var(--text-muted); color: var(--text-main);" onclick="closeCancelModal()">No, Keep It</button>
+      <button class="btn-danger" onclick="confirmCancelBooking()">Yes, Cancel</button>
+    </div>
   </div>
 </div>
 
@@ -54,6 +66,69 @@
   function handleEnter(event) {
     if (event.key === 'Enter') {
       searchBooking();
+    }
+  }
+
+  // 取消预约相关变量
+  let pendingCancelBookingId = null;
+  let pendingCancelPhone = null;
+
+  // 打开取消预约弹窗
+  function openCancelModal(bookingId, date, time, phone) {
+    pendingCancelBookingId = bookingId;
+    pendingCancelPhone = phone;
+    const message = `Are you sure you want to cancel Booking #${bookingId} for ${date} at ${time}? This action cannot be undone.`;
+    document.getElementById('cancel-modal-message').innerText = message;
+    document.getElementById('cancel-modal').style.display = 'flex';
+  }
+
+  // 关闭取消预约弹窗
+  function closeCancelModal() {
+    document.getElementById('cancel-modal').style.display = 'none';
+    pendingCancelBookingId = null;
+    pendingCancelPhone = null;
+  }
+
+  // 点击弹窗背景关闭
+  function handleCancelModalBackdropClick(event) {
+    if (event.target.id === 'cancel-modal') {
+      closeCancelModal();
+    }
+  }
+
+  // 确认取消预约
+  async function confirmCancelBooking() {
+    if (!pendingCancelBookingId || !pendingCancelPhone) {
+      alert('Error: Missing booking information.');
+      return;
+    }
+
+    const bookingId = pendingCancelBookingId;
+    const phone = pendingCancelPhone;
+
+    try {
+      const response = await fetch(`/api/book/cancel/${bookingId}/${phone}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (response.ok) {
+        closeCancelModal();
+        // 刷新搜索结果
+        searchBooking();
+        // 显示成功消息
+        const resultsContainer = document.getElementById('results-container');
+        const successMsg = document.createElement('div');
+        successMsg.style.cssText = 'text-align:center; padding: 20px; background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; border-radius: 12px; color: #10B981; margin-bottom: 20px;';
+        successMsg.innerHTML = `<strong>✓ Booking #${bookingId} has been cancelled successfully.</strong>`;
+        resultsContainer.insertBefore(successMsg, resultsContainer.firstChild);
+      } else {
+        alert('Failed to cancel booking: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Network Error:', error);
+      alert('Failed to connect to the server. Please try again.');
     }
   }
 
@@ -91,30 +166,33 @@
         } else {
           // 查到数据了，清空容器并循环渲染卡片
           resultsContainer.innerHTML = '';
-          result.data.forEach(booking => {
-            const card = document.createElement('div');
-            card.className = 'booking-card';
+           result.data.forEach(booking => {
+             const card = document.createElement('div');
+             card.className = 'booking-card';
 
-            const isConfirmed = (booking.deposit || '').toString().trim().toLowerCase() === 'yes';
-            const statusClass = isConfirmed ? 'confirmed' : 'received';
-            const statusText = isConfirmed ? 'Confirmed' : 'Received';
+             const isConfirmed = (booking.deposit || '').toString().trim().toLowerCase() === 'yes';
+             const statusClass = isConfirmed ? 'confirmed' : 'received';
+             const statusText = isConfirmed ? 'Confirmed' : 'Received';
 
-            // 动态生成卡片 HTML
-            card.innerHTML = `
-                            <div class="booking-header">
-                                <span class="booking-id">Booking ID: #${booking.id}</span>
-                                <span class="status-badge ${statusClass}">${statusText}</span>
-                            </div>
-                            <div class="booking-details">
-                                <p><strong>Date:</strong> ${booking.date}</p>
-                                <p><strong>Time:</strong> ${booking.time}</p>
-                                <p><strong>Room:</strong> ${booking.room}</p>
-                                <p><strong>Duration:</strong> ${booking.duration} Hours</p>
-                                <p><strong>Party Size:</strong> ${booking.partySize} People</p>
-                                <p><strong>Name:</strong> ${booking.name}</p>
-                            </div>
-                        `;
-            resultsContainer.appendChild(card);
+             // 动态生成卡片 HTML
+             card.innerHTML = `
+                             <div class="booking-header">
+                                 <span class="booking-id">Booking ID: #${booking.id}</span>
+                                 <span class="status-badge ${statusClass}">${statusText}</span>
+                             </div>
+                             <div class="booking-details">
+                                 <p><strong>Date:</strong> ${booking.date}</p>
+                                 <p><strong>Time:</strong> ${booking.time}</p>
+                                 <p><strong>Room:</strong> ${booking.room}</p>
+                                 <p><strong>Duration:</strong> ${booking.duration} Hours</p>
+                                 <p><strong>Party Size:</strong> ${booking.partySize} People</p>
+                                 <p><strong>Name:</strong> ${booking.name}</p>
+                             </div>
+                             <div class="booking-actions">
+                                 <button class="btn-cancel" onclick="openCancelModal(${booking.id}, '${booking.date}', '${booking.time}', '${phoneInput}')">Cancel Booking</button>
+                             </div>
+                         `;
+             resultsContainer.appendChild(card);
           });
         }
       } else {
