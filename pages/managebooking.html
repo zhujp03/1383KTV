@@ -30,11 +30,11 @@
 
 <div class="manage-container">
    <h1 class="manage-title">Find Your Reservation</h1>
-   <p class="manage-subtitle">Enter the phone number you used during booking.</p>
+   <p class="manage-subtitle">Enter the phone number you used when submitting your booking request.</p>
 
    <div class="search-bar-inline">
-     <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 1234567890" onkeypress="handleEnter(event)">
-     <button class="btn-primary" onclick="searchBooking()" id="search-btn">Search</button>
+     <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 6131234567" inputmode="numeric" maxlength="11" oninput="handleSearchPhoneInput(event)" onkeypress="handleEnter(event)">
+     <button class="btn-primary" onclick="searchBooking()" id="search-btn">Find Booking</button>
    </div>
 
    <div id="results-container" class="results-container">
@@ -47,8 +47,18 @@
     <h3>Cancel Booking?</h3>
     <p id="cancel-modal-message" style="color: var(--text-muted); margin: 15px 0;">Are you sure you want to cancel this booking?</p>
     <div class="modal-actions">
-      <button class="btn-cancel" style="background: transparent; border: 1px solid var(--text-muted); color: var(--text-main);" onclick="closeCancelModal()">No, Keep It</button>
-      <button class="btn-danger" onclick="confirmCancelBooking()">Yes, Cancel</button>
+      <button class="btn-cancel" style="background: transparent; border: 1px solid var(--text-muted); color: var(--text-main);" onclick="closeCancelModal()">Keep Booking</button>
+      <button class="btn-danger" onclick="confirmCancelBooking()">Cancel Booking</button>
+    </div>
+  </div>
+</div>
+
+<div id="notice-modal" class="modal-overlay" onclick="handleNoticeModalBackdropClick(event)">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="notice-modal-title">
+    <h3 id="notice-modal-title">Notice</h3>
+    <p id="notice-modal-message">Please try again.</p>
+    <div class="modal-actions">
+      <button class="btn-primary" type="button" onclick="closeNoticeModal()">OK</button>
     </div>
   </div>
 </div>
@@ -73,18 +83,43 @@
   let pendingCancelBookingId = null;
   let pendingCancelPhone = null;
 
+  function handleSearchPhoneInput(event) {
+    event.target.value = event.target.value.replace(/\D/g, '').slice(0, 11);
+  }
+
+  function isValidPhoneNumber(phone) {
+    return /^\d{10,11}$/.test(phone);
+  }
+
+  function openNoticeModal(message, options = {}) {
+    const { title = 'Notice' } = options;
+    document.getElementById('notice-modal-title').innerText = title;
+    document.getElementById('notice-modal-message').innerText = message;
+    document.getElementById('notice-modal').classList.add('show');
+  }
+
+  function closeNoticeModal() {
+    document.getElementById('notice-modal').classList.remove('show');
+  }
+
+  function handleNoticeModalBackdropClick(event) {
+    if (event.target.id === 'notice-modal') {
+      closeNoticeModal();
+    }
+  }
+
   // 打开取消预约弹窗
   function openCancelModal(bookingId, date, time, phone) {
     pendingCancelBookingId = bookingId;
     pendingCancelPhone = phone;
-    const message = `Are you sure you want to cancel Booking #${bookingId} for ${date} at ${time}? This action cannot be undone.`;
+    const message = `Cancel Booking #${bookingId} on ${date} at ${time}? This action cannot be undone.`;
     document.getElementById('cancel-modal-message').innerText = message;
-    document.getElementById('cancel-modal').style.display = 'flex';
+    document.getElementById('cancel-modal').classList.add('show');
   }
 
   // 关闭取消预约弹窗
   function closeCancelModal() {
-    document.getElementById('cancel-modal').style.display = 'none';
+    document.getElementById('cancel-modal').classList.remove('show');
     pendingCancelBookingId = null;
     pendingCancelPhone = null;
   }
@@ -99,7 +134,7 @@
   // 确认取消预约
   async function confirmCancelBooking() {
     if (!pendingCancelBookingId || !pendingCancelPhone) {
-      alert('Error: Missing booking information.');
+      openNoticeModal('We could not identify the booking to cancel. Please search again.', { title: 'Booking Not Found' });
       return;
     }
 
@@ -121,14 +156,17 @@
         const resultsContainer = document.getElementById('results-container');
         const successMsg = document.createElement('div');
         successMsg.style.cssText = 'text-align:center; padding: 20px; background: rgba(16, 185, 129, 0.1); border: 1px solid #10B981; border-radius: 12px; color: #10B981; margin-bottom: 20px;';
-        successMsg.innerHTML = `<strong>✓ Booking #${bookingId} has been cancelled successfully.</strong>`;
+        successMsg.innerHTML = `<strong>Booking #${bookingId} has been cancelled successfully.</strong>`;
         resultsContainer.insertBefore(successMsg, resultsContainer.firstChild);
       } else {
-        alert('Failed to cancel booking: ' + result.error);
+        const serverMessage = result && result.error
+          ? `We could not cancel your booking: ${result.error}`
+          : 'We could not cancel your booking right now. Please try again in a moment.';
+        openNoticeModal(serverMessage, { title: 'Cancellation Failed' });
       }
     } catch (error) {
       console.error('Network Error:', error);
-      alert('Failed to connect to the server. Please try again.');
+      openNoticeModal('We cannot connect to the server right now. Please check your connection and try again.', { title: 'Connection Issue' });
     }
   }
 
@@ -138,7 +176,12 @@
     const searchBtn = document.getElementById('search-btn');
 
     if (!phoneInput) {
-      alert("Please enter a phone number.");
+      openNoticeModal('Please enter your phone number to search your booking.', { title: 'Input Error' });
+      return;
+    }
+
+    if (!isValidPhoneNumber(phoneInput)) {
+      openNoticeModal('Phone number must be 10 or 11 digits and contain numbers only.', { title: 'Input Error' });
       return;
     }
 
@@ -151,7 +194,7 @@
       const response = await fetch(`/api/book/search/${phoneInput}`);
       const result = await response.json();
 
-      searchBtn.innerText = "Search";
+      searchBtn.innerText = "Find Booking";
       searchBtn.disabled = false;
 
       if (response.ok) {
@@ -160,7 +203,7 @@
           resultsContainer.innerHTML = `
                         <div style="text-align:center; padding: 40px; background: var(--card-bg); border-radius: 12px; border: 1px solid var(--border-color); backdrop-filter: blur(10px);">
                             <h3 style="color: var(--text-main);">No Bookings Found</h3>
-                            <p style="color: var(--text-muted);">We couldn't find any reservations under the phone number <strong>${phoneInput}</strong>.</p>
+                            <p style="color: var(--text-muted);">We could not find any bookings under the phone number <strong>${phoneInput}</strong>.</p>
                         </div>
                     `;
         } else {
@@ -196,13 +239,18 @@
           });
         }
       } else {
-        resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Error: ${result.error}</p>`;
+        const serverMessage = result && result.error
+          ? `We could not load your bookings: ${result.error}`
+          : 'We could not load your bookings right now. Please try again in a moment.';
+        openNoticeModal(serverMessage, { title: 'Search Failed' });
+        resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Unable to load booking results.</p>`;
       }
     } catch (error) {
       console.error("Network Error:", error);
-      searchBtn.innerText = "Search";
+      searchBtn.innerText = "Find Booking";
       searchBtn.disabled = false;
-      resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Failed to connect to the server.</p>`;
+      openNoticeModal('We cannot connect to the server right now. Please check your connection and try again.', { title: 'Connection Issue' });
+      resultsContainer.innerHTML = `<p style="text-align:center; color: red;">Unable to connect to the server.</p>`;
     }
   }
 </script>

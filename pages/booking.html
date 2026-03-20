@@ -203,6 +203,97 @@
             font-size: 0.82rem;
         }
 
+        .service-menu-section {
+            margin: 0 auto 26px auto;
+            text-align: left;
+            background: rgba(17, 24, 39, 0.7);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .service-menu-section h3 {
+            margin: 0;
+            font-size: 1rem;
+            letter-spacing: 0.4px;
+        }
+
+        .service-menu-note {
+            margin: 8px 0 12px 0;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            line-height: 1.45;
+        }
+
+        .service-detail {
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: rgba(7, 11, 20, 0.6);
+            margin-bottom: 10px;
+            overflow: hidden;
+        }
+
+        .service-detail:last-of-type {
+            margin-bottom: 0;
+        }
+
+        .service-detail summary {
+            list-style: none;
+            cursor: pointer;
+            padding: 10px 12px;
+            font-weight: 600;
+            color: var(--text-main);
+            border-bottom: 1px solid transparent;
+        }
+
+        .service-detail[open] summary {
+            border-bottom-color: var(--border-color);
+        }
+
+        .service-detail summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .service-price-list {
+            list-style: none;
+            margin: 0;
+            padding: 8px 12px 10px 12px;
+        }
+
+        .service-price-list li {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 7px 0;
+            border-bottom: 1px dashed rgba(156, 163, 175, 0.25);
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        .service-price-list li:last-child {
+            border-bottom: none;
+        }
+
+        .service-item-price {
+            color: var(--text-main);
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .service-link-row {
+            margin-top: 12px;
+        }
+
+        .service-link-row a {
+            color: #9ec2ff;
+            text-decoration: none;
+            font-size: 0.88rem;
+        }
+
+        .service-link-row a:hover {
+            text-decoration: underline;
+        }
+
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -248,15 +339,6 @@
     </style>
 </head>
 <body>
-<!--<nav class="top-nav">-->
-<!--    <div class="logo">1383 Karaoke Bar & KTV</div>-->
-<!--    <div class="nav-links">-->
-<!--        <a href="homeindex.html">HOME</a>-->
-<!--        <a href="booking.html" class="active">RESERVE</a>-->
-<!--        <a href="managebooking.html">SEARCH YOUR RESERVATION</a>-->
-<!--        <a href="legal.html">POLICIES</a>-->
-<!--    </div>-->
-<!--</nav>-->
 <nav class="top-nav">
     <div class="logo">1383 Karaoke Bar & KTV</div>
 
@@ -285,7 +367,7 @@
 
     <div id="step-1" class="step-content">
         <h2 class="step-title">Choose Your Room</h2>
-        <p class="step-subtitle">Pick a room that fits your party</p>
+        <p class="step-subtitle">Select a room type to start your booking</p>
 
         <div class="rooms-grid">
             <div class="room-card" data-room-key="small" onclick="selectRoom('Small Room', this)">
@@ -337,13 +419,63 @@
         <p class="step-subtitle">When would you like to sing?</p>
         <p class="step-subtitle" style="font-size: 0.85rem; margin-top:-30px;">For Friday and Saturday minimum 2 hours reservation</p>
 
+        <div class="service-menu-section">
+            <h3>Bottle Service & Drink Packages</h3>
+            <p class="service-menu-note">Current items from our menu images in menu_pic. Prices are listed before tax/HST; service charge may apply.</p>
+
+            <details class="service-detail">
+                <summary>Standard Bottle</summary>
+                <ul class="service-price-list">
+                    <li><span>Soju (360 mL)</span><span class="service-item-price">$28</span></li>
+                    <li><span>Soho Lychee Liqueur (750 mL)</span><span class="service-item-price">$128</span></li>
+                    <li><span>Absolut Vodka (750 mL)</span><span class="service-item-price">$128</span></li>
+                    <li><span>Johnnie Walker Red Label (750 mL / 1.14 L)</span><span class="service-item-price">$128 / $178</span></li>
+                    <li><span>Bombay Sapphire Gin (750 mL / 1.14 L)</span><span class="service-item-price">$128 / $178</span></li>
+                    <li><span>Captain Morgan Spiced Rum (750 mL)</span><span class="service-item-price">$128</span></li>
+                    <li><span>Bacardi White Rum (1.14 L)</span><span class="service-item-price">$158</span></li>
+                    <li><span>1800 Tequila (750 mL)</span><span class="service-item-price">$138</span></li>
+                </ul>
+            </details>
+
+            <details class="service-detail">
+                <summary>Premium / Luxury / Wine</summary>
+                <ul class="service-price-list">
+                    <li><span>Grey Goose Vodka (750 mL)</span><span class="service-item-price">$178</span></li>
+                    <li><span>Johnnie Walker Black Label (750 mL)</span><span class="service-item-price">$198</span></li>
+                    <li><span>Hennessy V.S. (750 mL)</span><span class="service-item-price">$218</span></li>
+                    <li><span>Casamigos Tequila (750 mL)</span><span class="service-item-price">$288</span></li>
+                    <li><span>Johnnie Walker Blue Label (750 mL)</span><span class="service-item-price">$808</span></li>
+                    <li><span>Armand de Brignac Champagne</span><span class="service-item-price">$808</span></li>
+                    <li><span>House White Wine</span><span class="service-item-price">$68</span></li>
+                    <li><span>House Red Wine</span><span class="service-item-price">$68</span></li>
+                </ul>
+            </details>
+
+            <details class="service-detail">
+                <summary>Drink Packages</summary>
+                <ul class="service-price-list">
+                    <li><span>Flying Shot (One Rack, 6 shots)</span><span class="service-item-price">$35</span></li>
+                    <li><span>Sober Sober (Beer x6 + snacks)</span><span class="service-item-price">$88</span></li>
+                    <li><span>K-Pop Style (Beer x4 + Korean Soju x1)</span><span class="service-item-price">$98</span></li>
+                    <li><span>Little Tipsy (Beer x12 + snacks)</span><span class="service-item-price">$138</span></li>
+                    <li><span>Party Tonight (Choice of bottle)</span><span class="service-item-price">$238</span></li>
+                    <li><span>Boss Package (Casamigos bottle + snacks)</span><span class="service-item-price">$338</span></li>
+                    <li><span>Party Tonight upgrade to Grey Goose</span><span class="service-item-price">+$45</span></li>
+                </ul>
+            </details>
+
+            <div class="service-link-row">
+                <a href="homeindex.html#menus">View full menu photos →</a>
+            </div>
+        </div>
+
         <div class="form-group">
             <label for="booking-date">1. Select Date</label>
             <input type="date" id="booking-date" class="neon-input" required onchange="handleDateChange()">
         </div>
 
         <div class="form-group">
-            <label for="booking-duration">2. Duration</label>
+            <label for="booking-duration">2. How long will you stay?</label>
             <select id="booking-duration" class="neon-input" required onchange="fetchBookingsAndRenderTimes()">
                 <option value="" disabled selected>Select Date First</option>
             </select>
@@ -353,6 +485,7 @@
             <label>3. Available Start Times</label>
             <div id="dynamic-time-container" class="dynamic-time-grid">
             </div>
+            <small class="field-hint">All bookings are subject to availability.</small>
         </div>
 
         <div class="actions">
@@ -538,7 +671,7 @@
         const dayOfWeek = selectedDate.getDay(); // 0是周日，5是周五，6是周六
 
         // 清空原有的下拉选项
-        durationSelect.innerHTML = '<option value="" disabled selected>How long?</option>';
+        durationSelect.innerHTML = '<option value="" disabled selected>How long will you stay?</option>';
 
         // 如果不是周五(5)和周六(6)，才添加 1 Hour 选项
         if (dayOfWeek !== 5 && dayOfWeek !== 6) {
@@ -568,7 +701,7 @@
         // 🌟 需求1: 选择了 3 小时及以上，立刻阻断流程并提示打电话
         if (durationVal && parseInt(durationVal) >= 3) {
             openAppModal(
-                'For bookings of 3 hours or longer, please call us at 613-867-1383. We will help you arrange pricing and availability right away.',
+                'For bookings of 3 hours or more, please call us at 613-867-1383. Our team will assist you with availability, pricing, and special arrangements.',
                 { title: 'Please Call Us', buttonText: 'Got it' }
             );
 
