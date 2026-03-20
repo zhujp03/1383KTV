@@ -103,6 +103,132 @@
         .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;}
         .card-header h3 { margin: 0; font-size: 1.2rem; }
         .card-header .price { color: var(--primary-blue); font-weight: bold; }
+        .room-tier-label {
+            display: inline-block;
+            margin-bottom: 10px;
+            padding: 4px 10px;
+            border-radius: 999px;
+            border: 1px solid rgba(156, 163, 175, 0.35);
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            letter-spacing: 0.5px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+        .room-desc {
+            margin: 0 0 8px 0;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+        .room-card.popular-room {
+            border-color: rgba(59, 130, 246, 0.65);
+            background: linear-gradient(180deg, rgba(23, 37, 66, 0.95), rgba(17, 24, 39, 0.95));
+        }
+        .room-card.popular-room .room-tier-label {
+            border-color: rgba(59, 130, 246, 0.55);
+            color: #d6e8ff;
+        }
+        .room-card.popular-room .room-desc {
+            color: #ced7e5;
+        }
+        .room-card.popular-room .card-header h3 {
+            color: #e9f3ff;
+        }
+
+        .upsell-section {
+            margin-top: 22px;
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: left;
+            background: rgba(17, 24, 39, 0.72);
+        }
+        .upsell-title {
+            margin: 0 0 6px 0;
+            font-size: 1.05rem;
+        }
+        .upsell-social-proof {
+            margin: 0 0 12px 0;
+            color: #c4dafd;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+        .upsell-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
+        }
+        .upsell-card {
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            background: rgba(7, 11, 20, 0.64);
+            color: var(--text-main);
+            text-align: left;
+            cursor: pointer;
+            transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+            min-height: 126px;
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-start;
+        }
+        .upsell-card:hover {
+            border-color: rgba(59, 130, 246, 0.7);
+            transform: translateY(-1px);
+        }
+        .upsell-card.selected {
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.28);
+        }
+        .upsell-card.recommended {
+            border-color: rgba(59, 130, 246, 0.55);
+            background: rgba(20, 34, 61, 0.7);
+        }
+        .upsell-label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+            font-weight: 700;
+            font-size: 0.92rem;
+        }
+        .upsell-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 2px 7px;
+            border-radius: 999px;
+            border: 1px solid rgba(59, 130, 246, 0.45);
+            color: #d6e8ff;
+            font-size: 0.68rem;
+            letter-spacing: 0.35px;
+            text-transform: uppercase;
+            white-space: nowrap;
+        }
+        .upsell-desc {
+            margin: 0;
+            color: var(--text-muted);
+            line-height: 1.4;
+            font-size: 0.84rem;
+        }
+        .upsell-hint {
+            margin: 11px 0 0 0;
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
+        .upsell-preview-line {
+            color: #c4dafd;
+            font-size: 0.88rem;
+            margin-top: -20px;
+            margin-bottom: 24px;
+        }
+        .upsell-summary-line {
+            color: #c4dafd;
+            font-size: 0.88rem;
+            margin-top: -8px;
+            margin-bottom: 10px;
+        }
 
         /* 按钮群组 */
         .actions { margin-top: 40px; display: flex; justify-content: center; gap: 20px; }
@@ -294,6 +420,12 @@
             text-decoration: underline;
         }
 
+        @media (max-width: 860px) {
+            .upsell-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -362,39 +494,78 @@
         <div class="step-circle" id="indicator-2">2</div>
         <div class="step-circle" id="indicator-3">3</div>
         <div class="step-circle" id="indicator-4">4</div>
-        <div class="step-circle" id="indicator-5">5</div>
     </div>
 
     <div id="step-1" class="step-content">
         <h2 class="step-title">Choose Your Room</h2>
-        <p class="step-subtitle">Select a room type to start your booking</p>
+        <p class="step-subtitle">Pick your room first, then build the perfect night.</p>
 
         <div class="rooms-grid">
-            <div class="room-card" data-room-key="small" onclick="selectRoom('Small Room', this)">
+            <div class="room-card" data-room-key="small" data-room-name="Small Room" onclick="selectRoom('Small Room', this)">
+                <span class="room-tier-label">Standard Room</span>
                 <div class="card-header">
                     <h3>Small Room</h3>
                     <span class="price">$55/hr</span>
                 </div>
                 <p class="capacity">👥 1-8 people</p>
+                <p class="room-desc">Perfect for casual gatherings and small groups.</p>
+                <p class="room-desc">Enjoy a comfortable karaoke experience.</p>
             </div>
-            <div class="room-card" data-room-key="medium" onclick="selectRoom('Medium Room', this)">
+            <div class="room-card" data-room-key="medium" data-room-name="Medium Room" onclick="selectRoom('Medium Room', this)">
+                <span class="room-tier-label">Group Room</span>
                 <div class="card-header">
                     <h3>Medium Room</h3>
                     <span class="price">$65/hr</span>
                 </div>
                 <p class="capacity">👥 1-12 people</p>
+                <p class="room-desc">Balanced space for groups that want more room to celebrate.</p>
+                <p class="room-desc">Great for friend meetups, team nights, and weekend parties.</p>
             </div>
-            <div class="room-card" data-room-key="vip" onclick="selectRoom('VIP Room', this)">
+            <div class="room-card popular-room" data-room-key="vip" data-room-name="VIP Room" onclick="selectRoom('VIP Room', this)">
+                <span class="room-tier-label">VIP Room 🔥 - Most Popular</span>
                 <div class="card-header">
                     <h3>VIP Room</h3>
                     <span class="price">$85/hr</span>
                 </div>
                 <p class="capacity">👥 1-20 people</p>
+                <p class="room-desc">Premium sound system, upgraded lighting, and a more private atmosphere.</p>
+                <p class="room-desc">Perfect for parties, birthdays, and special nights.</p>
             </div>
         </div>
 
+        <div class="upsell-section">
+            <h3 class="upsell-title">Enhance Your Experience</h3>
+            <p class="upsell-social-proof">Most groups choose a package for better value.</p>
+
+            <div class="upsell-grid">
+                <button type="button" class="upsell-card" onclick="selectUpsell('Drink Package', this)">
+                    <div class="upsell-label">
+                        <span>🍺 Drink Package</span>
+                    </div>
+                    <p class="upsell-desc">Save more when you pre-order drinks.</p>
+                </button>
+
+                <button type="button" class="upsell-card" onclick="selectUpsell('Bottle Service', this)">
+                    <div class="upsell-label">
+                        <span>🥃 Bottle Service</span>
+                    </div>
+                    <p class="upsell-desc">Upgrade your night with premium spirits.</p>
+                </button>
+
+                <button type="button" class="upsell-card recommended" onclick="selectUpsell('Party Package', this)">
+                    <div class="upsell-label">
+                        <span>🎉 Party Package</span>
+                        <span class="upsell-badge">Recommended</span>
+                    </div>
+                    <p class="upsell-desc">Best value for groups and celebrations.</p>
+                </button>
+            </div>
+
+            <p class="upsell-hint">Optional at this step. We will confirm package details with you after booking.</p>
+        </div>
+
         <div class="actions">
-            <button id="btn-next-1" class="next-btn" disabled onclick="goToStep(2)">Next →</button>
+            <button id="btn-next-1" class="next-btn" disabled onclick="goToStep(2)">Continue Booking →</button>
         </div>
     </div>
 
@@ -418,10 +589,21 @@
         <h2 class="step-title">Select Date & Time</h2>
         <p class="step-subtitle">When would you like to sing?</p>
         <p class="step-subtitle" style="font-size: 0.85rem; margin-top:-30px;">For Friday and Saturday minimum 2 hours reservation</p>
+        <p id="upsell-preview-line" class="step-subtitle upsell-preview-line" style="display: none;"></p>
 
         <div class="service-menu-section">
             <h3>Bottle Service & Drink Packages</h3>
             <p class="service-menu-note">Current items from our menu images in menu_pic. Prices are listed before tax/HST; service charge may apply.</p>
+            <p class="service-menu-note" style="margin-top: -2px;">Most groups choose a package for better value.</p>
+
+            <details class="service-detail">
+                <summary>Package Levels (No-price Preview)</summary>
+                <ul class="service-price-list">
+                    <li><span>Basic Package</span><span class="service-item-price">Room + basic drinks</span></li>
+                    <li><span>Party Package ⭐</span><span class="service-item-price">Room + drinks + sharing snacks</span></li>
+                    <li><span>Premium Package 👑</span><span class="service-item-price">Premium drinks + priority service</span></li>
+                </ul>
+            </details>
 
             <details class="service-detail">
                 <summary>Standard Bottle</summary>
@@ -438,7 +620,7 @@
             </details>
 
             <details class="service-detail">
-                <summary>Premium / Luxury / Wine</summary>
+                <summary>Premium Bottles / Wine</summary>
                 <ul class="service-price-list">
                     <li><span>Grey Goose Vodka (750 mL)</span><span class="service-item-price">$178</span></li>
                     <li><span>Johnnie Walker Black Label (750 mL)</span><span class="service-item-price">$198</span></li>
@@ -517,6 +699,8 @@
             <small class="field-hint">Use digits only, 10 or 11 numbers.</small>
         </div>
 
+        <p id="upsell-summary-line" class="step-subtitle upsell-summary-line" style="display: none;"></p>
+
         <div class="actions">
             <button class="back-btn" onclick="goToStep(3)">← Back</button>
             <button class="next-btn" id="confirm-booking-btn" onclick="submitBooking()">Confirm Booking</button>
@@ -542,7 +726,8 @@
         partySize: 2,
         date: null,
         time: null,
-        duration: null
+        duration: null,
+        upsellInterest: ''
     };
 
     let currentDayBookings = [];
@@ -575,6 +760,7 @@
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('booking-date').setAttribute('min', today);
         applyPreselectedRoomFromQuery();
+        updateUpsellMentions();
     };
 
     function applyPreselectedRoomFromQuery() {
@@ -587,7 +773,7 @@
         const roomCard = document.querySelector(`.room-card[data-room-key="${roomKey}"]`);
         if (!roomCard) return;
 
-        const roomName = roomCard.querySelector('.card-header h3')?.innerText?.trim();
+        const roomName = roomCard.dataset.roomName || roomCard.querySelector('.card-header h3')?.innerText?.trim();
         if (!roomName) return;
 
         selectRoom(roomName, roomCard);
@@ -604,6 +790,50 @@
                 el.classList.remove('active');
             }
         });
+
+        updateUpsellMentions();
+    }
+
+    function selectUpsell(upsellName, element) {
+        const cards = document.querySelectorAll('.upsell-card');
+
+        if (bookingData.upsellInterest === upsellName) {
+            bookingData.upsellInterest = '';
+            cards.forEach(card => card.classList.remove('selected'));
+            updateUpsellMentions();
+            return;
+        }
+
+        bookingData.upsellInterest = upsellName;
+        cards.forEach(card => card.classList.remove('selected'));
+        element.classList.add('selected');
+        updateUpsellMentions();
+    }
+
+    function updateUpsellMentions() {
+        const previewLine = document.getElementById('upsell-preview-line');
+        const summaryLine = document.getElementById('upsell-summary-line');
+        const selectedUpsell = bookingData.upsellInterest;
+
+        if (previewLine) {
+            if (selectedUpsell) {
+                previewLine.style.display = 'block';
+                previewLine.textContent = `Selected add-on interest: ${selectedUpsell} (we will confirm details with you).`;
+            } else {
+                previewLine.style.display = 'none';
+                previewLine.textContent = '';
+            }
+        }
+
+        if (summaryLine) {
+            if (selectedUpsell) {
+                summaryLine.style.display = 'block';
+                summaryLine.textContent = `Add-on preference: ${selectedUpsell}`;
+            } else {
+                summaryLine.style.display = 'none';
+                summaryLine.textContent = '';
+            }
+        }
     }
 
     // 🌟 选房间逻辑 (加入人数强制降级限制)
@@ -701,7 +931,7 @@
         // 🌟 需求1: 选择了 3 小时及以上，立刻阻断流程并提示打电话
         if (durationVal && parseInt(durationVal) >= 3) {
             openAppModal(
-                'For bookings of 3 hours or more, please call us at 613-867-1383. Our team will assist you with availability, pricing, and special arrangements.',
+                'For bookings of 3 hours or more, please call us at 613-867-1383. Exclusive pricing and packages are available for extended bookings.',
                 { title: 'Please Call Us', buttonText: 'Got it' }
             );
 
@@ -922,8 +1152,11 @@
             const result = await response.json();
 
             if (response.ok) {
+                const upsellFollowUp = bookingData.upsellInterest
+                    ? ` We also noted your interest in ${bookingData.upsellInterest}.`
+                    : '';
                 openAppModal(
-                    "Thank you for choosing 1383 Karaoke Bar & KTV! Your booking request is in. We are preparing the details now and will text you soon with deposit information to secure your reservation.",
+                    `Thank you for choosing 1383 Karaoke Bar & KTV! Your booking request is in. We are preparing the details now and will text you soon with deposit information to secure your reservation.${upsellFollowUp}`,
                     {
                         title: 'Request Received',
                         buttonText: 'Back to Home',
