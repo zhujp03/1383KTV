@@ -468,7 +468,8 @@
             display: flex;
             justify-content: flex-end;
         }
-    </style>
+</style>
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
 <nav class="top-nav">
@@ -699,6 +700,12 @@
             <small class="field-hint">Use digits only, 10 or 11 numbers.</small>
         </div>
 
+        <div class="form-group" id="captcha-section" style="display: none;">
+            <label>Security Verification</label>
+            <div id="captcha-container"></div>
+            <small class="field-hint">Please complete this step to prevent abuse and protect messaging costs.</small>
+        </div>
+
         <p id="upsell-summary-line" class="step-subtitle upsell-summary-line" style="display: none;"></p>
 
         <div class="actions">
@@ -732,6 +739,14 @@
 
     let currentDayBookings = [];
     let modalCloseHandler = null;
+    let securityConfig = {
+        captchaEnabled: false,
+        captchaProvider: '',
+        turnstileSiteKey: ''
+    };
+    let captchaToken = '';
+    let turnstileWidgetId = null;
+    let turnstileRenderRetries = 0;
 
     // 🌟 包厢人数上限配置
     const ROOM_MAX_PEOPLE = {
@@ -756,12 +771,82 @@
         "large-room": "vip"
     };
 
-    window.onload = function() {
+    window.onload = async function() {
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('booking-date').setAttribute('min', today);
         applyPreselectedRoomFromQuery();
         updateUpsellMentions();
+        await loadSecurityConfig();
     };
+
+    async function loadSecurityConfig() {
+        const captchaSection = document.getElementById('captcha-section');
+        if (!captchaSection) return;
+
+        try {
+            const response = await fetch('/api/public/security-config');
+            const config = await response.json();
+            securityConfig = {
+                captchaEnabled: Boolean(config && config.captchaEnabled),
+                captchaProvider: (config && config.captchaProvider) || '',
+                turnstileSiteKey: (config && config.turnstileSiteKey) || ''
+            };
+        } catch (error) {
+            console.error('Failed to load security config:', error);
+            securityConfig = { captchaEnabled: false, captchaProvider: '', turnstileSiteKey: '' };
+        }
+
+        if (!securityConfig.captchaEnabled) {
+            captchaSection.style.display = 'none';
+            return;
+        }
+
+        if (securityConfig.captchaProvider === 'turnstile' && securityConfig.turnstileSiteKey) {
+            captchaSection.style.display = 'block';
+            renderTurnstileCaptcha();
+            return;
+        }
+
+        captchaSection.style.display = 'none';
+    }
+
+    function renderTurnstileCaptcha() {
+        if (!securityConfig.captchaEnabled || securityConfig.captchaProvider !== 'turnstile' || !securityConfig.turnstileSiteKey) {
+            return;
+        }
+
+        if (turnstileWidgetId !== null) return;
+
+        if (!window.turnstile || typeof window.turnstile.render !== 'function') {
+            if (turnstileRenderRetries < 30) {
+                turnstileRenderRetries += 1;
+                setTimeout(renderTurnstileCaptcha, 250);
+            }
+            return;
+        }
+
+        turnstileWidgetId = window.turnstile.render('#captcha-container', {
+            sitekey: securityConfig.turnstileSiteKey,
+            theme: 'dark',
+            callback: (token) => {
+                captchaToken = token || '';
+            },
+            'expired-callback': () => {
+                captchaToken = '';
+            },
+            'error-callback': () => {
+                captchaToken = '';
+            }
+        });
+    }
+
+    function resetCaptchaChallenge() {
+        if (!securityConfig.captchaEnabled) return;
+        captchaToken = '';
+        if (window.turnstile && turnstileWidgetId !== null) {
+            window.turnstile.reset(turnstileWidgetId);
+        }
+    }
 
     function applyPreselectedRoomFromQuery() {
         const params = new URLSearchParams(window.location.search);
@@ -1133,6 +1218,11 @@
             return;
         }
 
+        if (securityConfig.captchaEnabled && !captchaToken) {
+            openValidationModal('Please complete the security verification before submitting.');
+            return;
+        }
+
         bookingData.name = nameInput;
         bookingData.phone = phoneInput;
 
@@ -1146,7 +1236,10 @@
             const response = await fetch('/api/book', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bookingData)
+                body: JSON.stringify({
+                    ...bookingData,
+                    captchaToken
+                })
             });
 
             const result = await response.json();
@@ -1170,6 +1263,7 @@
                     ? `We could not submit your booking: ${result.error}`
                     : 'We could not submit your booking right now. Please try again in a moment.';
                 openAppModal(serverMessage, { title: 'Booking Not Submitted', buttonText: 'OK' });
+                resetCaptchaChallenge();
                 if (confirmBtn) {
                     confirmBtn.innerText = "Confirm Booking";
                     confirmBtn.disabled = false;
@@ -1181,6 +1275,7 @@
                 'We cannot connect to the server right now. Please check your connection and try again.',
                 { title: 'Connection Issue', buttonText: 'OK' }
             );
+            resetCaptchaChallenge();
             if (confirmBtn) {
                 confirmBtn.innerText = "Confirm Booking";
                 confirmBtn.disabled = false;

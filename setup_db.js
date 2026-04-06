@@ -1,11 +1,29 @@
 // setup_db.js - 用于初始化数据库和默认管理员
 const sqlite3 = require('sqlite3').verbose();
 const bcrypt = require('bcrypt');
+const path = require('path');
+const fs = require('fs');
 
 const BCRYPT_ROUNDS = 10;
+const DEFAULT_DATABASE_DIR = path.join(__dirname, 'database');
+const DATABASE_DIR_INPUT = String(process.env.DATABASE_DIR || DEFAULT_DATABASE_DIR).trim();
+const DATABASE_DIR = path.isAbsolute(DATABASE_DIR_INPUT)
+    ? DATABASE_DIR_INPUT
+    : path.join(__dirname, DATABASE_DIR_INPUT);
+const ADMIN_DB_PATH = path.join(DATABASE_DIR, 'admin.db');
+
+fs.mkdirSync(DATABASE_DIR, { recursive: true });
+
+if (DATABASE_DIR !== DEFAULT_DATABASE_DIR) {
+    const seedAdminDb = path.join(DEFAULT_DATABASE_DIR, 'admin.db');
+    if (!fs.existsSync(ADMIN_DB_PATH) && fs.existsSync(seedAdminDb)) {
+        fs.copyFileSync(seedAdminDb, ADMIN_DB_PATH);
+        console.log(`📦 Seeded admin.db to ${DATABASE_DIR}`);
+    }
+}
 
 // 连接到 admin.db（如果不存在会自动创建）
-const db = new sqlite3.Database('./admin.db', (err) => {
+const db = new sqlite3.Database(ADMIN_DB_PATH, (err) => {
     if (err) {
         return console.error('❌ 数据库打开失败:', err.message);
     }
