@@ -181,6 +181,13 @@
             border-color: var(--primary-blue);
             box-shadow: 0 0 15px rgba(59, 130, 246, 0.28);
         }
+        .upsell-card:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            border-color: rgba(107, 114, 128, 0.45);
+            transform: none;
+            box-shadow: none;
+        }
         .upsell-card.recommended {
             border-color: rgba(59, 130, 246, 0.55);
             background: rgba(20, 34, 61, 0.7);
@@ -495,6 +502,7 @@
         <div class="step-circle" id="indicator-2">2</div>
         <div class="step-circle" id="indicator-3">3</div>
         <div class="step-circle" id="indicator-4">4</div>
+        <div class="step-circle" id="indicator-5">5</div>
     </div>
 
     <div id="step-1" class="step-content">
@@ -714,6 +722,41 @@
         </div>
     </div>
 
+    <div id="step-5" class="step-content" style="display: none;">
+        <h2 class="step-title">Secure Payment</h2>
+        <p class="step-subtitle">Step 5: complete payment to finalize your booking.</p>
+
+        <div class="service-menu-section">
+            <h3>Deposit Summary</h3>
+            <p class="service-menu-note">Deposit amount = first-hour room price only.</p>
+            <ul class="service-price-list" id="payment-breakdown-list">
+                <li><span>Room (first hour)</span><span class="service-item-price">-</span></li>
+                <li><span><strong>Total deposit due now</strong></span><span class="service-item-price" id="payment-total-amount">$0.00</span></li>
+            </ul>
+            <p class="service-menu-note" id="payment-booking-id-hint">Booking ID: -</p>
+        </div>
+
+        <div class="upsell-section" style="margin-top: 16px;">
+            <h3 class="upsell-title">Choose Payment Method</h3>
+            <div class="upsell-grid">
+                <button type="button" class="upsell-card" id="pay-with-stripe-btn" onclick="startPayment('stripe')">
+                    <div class="upsell-label"><span>💳 Stripe (Card)</span></div>
+                    <p class="upsell-desc" id="stripe-status-text">Secure card checkout.</p>
+                </button>
+                <button type="button" class="upsell-card" id="pay-with-paypal-btn" onclick="startPayment('paypal')">
+                    <div class="upsell-label"><span>🅿️ PayPal</span></div>
+                    <p class="upsell-desc" id="paypal-status-text">Pay via your PayPal account.</p>
+                </button>
+            </div>
+            <p class="upsell-hint" id="payment-step-hint">After payment succeeds, we will mark your booking as paid automatically.</p>
+        </div>
+
+        <div class="actions">
+            <button class="back-btn" onclick="goToStep(4)">← Back</button>
+            <button class="next-btn" id="refresh-payment-status-btn" onclick="refreshPaymentQuote()">Refresh Amount</button>
+        </div>
+    </div>
+
 </div>
 
 <div class="modal-overlay" id="validation-modal" onclick="handleModalBackdropClick(event)">
@@ -729,12 +772,15 @@
 <script>
     // 1. 全局数据状态
     let bookingData = {
+        bookingId: null,
         room: null,
         partySize: 2,
         date: null,
         time: null,
         duration: null,
-        upsellInterest: ''
+        upsellInterest: '',
+        paymentStatus: 'unpaid',
+        paymentQuote: null
     };
 
     let currentDayBookings = [];
@@ -742,11 +788,19 @@
     let securityConfig = {
         captchaEnabled: false,
         captchaProvider: '',
-        turnstileSiteKey: ''
+        turnstileSiteKey: '',
+        payment: {
+            currency: 'CAD',
+            providers: {
+                stripe: { enabled: false, publishableKey: '' },
+                paypal: { enabled: false, env: 'sandbox' }
+            }
+        }
     };
     let captchaToken = '';
     let turnstileWidgetId = null;
     let turnstileRenderRetries = 0;
+    let paymentActionInProgress = false;
 
     // 🌟 包厢人数上限配置
     const ROOM_MAX_PEOPLE = {
@@ -777,6 +831,7 @@
         applyPreselectedRoomFromQuery();
         updateUpsellMentions();
         await loadSecurityConfig();
+        await handlePaymentReturnFromQuery();
     };
 
     async function loadSecurityConfig() {
@@ -789,11 +844,17 @@
             securityConfig = {
                 captchaEnabled: Boolean(config && config.captchaEnabled),
                 captchaProvider: (config && config.captchaProvider) || '',
-                turnstileSiteKey: (config && config.turnstileSiteKey) || ''
+                turnstileSiteKey: (config && config.turnstileSiteKey) || '',
+                payment: (config && config.payment) || securityConfig.payment
             };
         } catch (error) {
             console.error('Failed to load security config:', error);
-            securityConfig = { captchaEnabled: false, captchaProvider: '', turnstileSiteKey: '' };
+            securityConfig = {
+                captchaEnabled: false,
+                captchaProvider: '',
+                turnstileSiteKey: '',
+                payment: securityConfig.payment
+            };
         }
 
         if (!securityConfig.captchaEnabled) {
@@ -804,10 +865,10 @@
         if (securityConfig.captchaProvider === 'turnstile' && securityConfig.turnstileSiteKey) {
             captchaSection.style.display = 'block';
             renderTurnstileCaptcha();
-            return;
+        } else {
+            captchaSection.style.display = 'none';
         }
-
-        captchaSection.style.display = 'none';
+        updatePaymentProviderButtons();
     }
 
     function renderTurnstileCaptcha() {
@@ -845,6 +906,194 @@
         captchaToken = '';
         if (window.turnstile && turnstileWidgetId !== null) {
             window.turnstile.reset(turnstileWidgetId);
+        }
+    }
+
+    function getPaymentProviderConfig(provider) {
+        return (securityConfig.payment && securityConfig.payment.providers && securityConfig.payment.providers[provider]) || { enabled: false };
+    }
+
+    function updatePaymentProviderButtons() {
+        const stripeCfg = getPaymentProviderConfig('stripe');
+        const paypalCfg = getPaymentProviderConfig('paypal');
+        const stripeBtn = document.getElementById('pay-with-stripe-btn');
+        const paypalBtn = document.getElementById('pay-with-paypal-btn');
+        const stripeText = document.getElementById('stripe-status-text');
+        const paypalText = document.getElementById('paypal-status-text');
+
+        if (stripeBtn) stripeBtn.disabled = !stripeCfg.enabled;
+        if (paypalBtn) paypalBtn.disabled = !paypalCfg.enabled;
+        if (stripeText) stripeText.textContent = stripeCfg.enabled
+            ? 'Secure card checkout via Stripe.'
+            : 'Stripe is not configured yet.';
+        if (paypalText) paypalText.textContent = paypalCfg.enabled
+            ? `PayPal checkout (${paypalCfg.env || 'sandbox'} mode).`
+            : 'PayPal is not configured yet.';
+    }
+
+    function formatMoney(amount, currency = 'CAD') {
+        const num = Number(amount || 0);
+        return new Intl.NumberFormat('en-CA', {
+            style: 'currency',
+            currency: currency || 'CAD'
+        }).format(num);
+    }
+
+    function renderPaymentQuote(quote) {
+        if (!quote) return;
+        bookingData.paymentQuote = quote;
+        const list = document.getElementById('payment-breakdown-list');
+        const totalNode = document.getElementById('payment-total-amount');
+        const bookingHint = document.getElementById('payment-booking-id-hint');
+        const currency = quote.currency || (securityConfig.payment && securityConfig.payment.currency) || 'CAD';
+        const roomFee = Number(quote.roomFirstHourPrice || 0);
+        const total = Number(quote.total || 0);
+
+        if (list) {
+            list.innerHTML = `
+                <li><span>Room (first hour)</span><span class="service-item-price">${formatMoney(roomFee, currency)}</span></li>
+                <li><span><strong>Total deposit due now</strong></span><span class="service-item-price">${formatMoney(total, currency)}</span></li>
+            `;
+        }
+        if (totalNode) totalNode.textContent = formatMoney(total, currency);
+        if (bookingHint) bookingHint.textContent = `Booking ID: #${bookingData.bookingId || '-'}`;
+    }
+
+    async function refreshPaymentQuote() {
+        if (!bookingData.bookingId) {
+            openValidationModal('Please submit a booking first.');
+            return;
+        }
+        try {
+            const response = await fetch(`/api/book/${bookingData.bookingId}/payment-quote`);
+            const result = await response.json();
+            if (!response.ok) {
+                openAppModal(result.error || 'Failed to refresh payment amount.', { title: 'Payment Error' });
+                return;
+            }
+            bookingData.paymentStatus = result.paymentStatus || 'unpaid';
+            renderPaymentQuote(result.paymentQuote);
+            if (bookingData.paymentStatus === 'paid') {
+                openAppModal('This booking is already paid.', { title: 'Payment Complete' });
+            }
+        } catch (error) {
+            console.error('Failed to refresh payment quote:', error);
+            openAppModal('Unable to refresh payment amount right now.', { title: 'Connection Issue' });
+        }
+    }
+
+    async function startPayment(provider) {
+        if (paymentActionInProgress) return;
+        const providerConfig = getPaymentProviderConfig(provider);
+        if (!providerConfig.enabled) {
+            openAppModal('This payment method is not configured yet.', { title: 'Payment Disabled' });
+            return;
+        }
+        if (!bookingData.bookingId) {
+            openValidationModal('Please submit the booking details first.');
+            return;
+        }
+
+        paymentActionInProgress = true;
+        const hintNode = document.getElementById('payment-step-hint');
+        if (hintNode) {
+            hintNode.textContent = provider === 'stripe' ? 'Redirecting to Stripe checkout...' : 'Redirecting to PayPal...';
+        }
+
+        try {
+            const response = await fetch(`/api/book/${bookingData.bookingId}/payment/start`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider,
+                    phone: bookingData.phone
+                })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                openAppModal(result.error || 'Failed to start payment.', { title: 'Payment Error' });
+                return;
+            }
+
+            if (result.paymentStatus === 'paid') {
+                openAppModal('This booking is already paid.', { title: 'Payment Complete' });
+                return;
+            }
+            if (!result.checkoutUrl) {
+                openAppModal('Payment provider did not return a checkout URL.', { title: 'Payment Error' });
+                return;
+            }
+
+            window.location.href = result.checkoutUrl;
+        } catch (error) {
+            console.error('Failed to start payment:', error);
+            openAppModal('Unable to connect to payment gateway. Please try again.', { title: 'Connection Issue' });
+        } finally {
+            paymentActionInProgress = false;
+            if (hintNode) {
+                hintNode.textContent = 'After payment succeeds, we will mark your booking as paid automatically.';
+            }
+        }
+    }
+
+    async function handlePaymentReturnFromQuery() {
+        const params = new URLSearchParams(window.location.search);
+        const paymentState = (params.get('payment') || '').trim().toLowerCase();
+        const provider = (params.get('provider') || '').trim().toLowerCase();
+        const bookingId = Number(params.get('bookingId') || 0);
+        if (!paymentState || !provider || !Number.isFinite(bookingId) || bookingId <= 0) return;
+
+        if (paymentState === 'cancel') {
+            bookingData.bookingId = bookingId;
+            goToStep(5);
+            await refreshPaymentQuote();
+            openAppModal('Payment was not completed. You can retry from Step 5.', { title: 'Payment Cancelled' });
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+        }
+
+        if (paymentState !== 'success') return;
+
+        const stripeSessionId = params.get('session_id') || '';
+        const paypalOrderId = params.get('token') || params.get('order_id') || '';
+
+        bookingData.bookingId = bookingId;
+        goToStep(5);
+
+        try {
+            const response = await fetch(`/api/book/${bookingId}/payment/confirm`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    provider,
+                    sessionId: stripeSessionId,
+                    orderId: paypalOrderId
+                })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                openAppModal(result.error || 'Payment confirmation failed. Please try refreshing Step 5.', {
+                    title: 'Payment Confirmation Failed'
+                });
+            } else {
+                bookingData.paymentStatus = 'paid';
+                openAppModal(
+                    'Payment successful. Your booking is now confirmed as PAID. Thank you!',
+                    {
+                        title: 'Payment Confirmed',
+                        buttonText: 'Back to Home',
+                        onClose: () => {
+                            window.location.href = 'homeindex.html';
+                        }
+                    }
+                );
+            }
+        } catch (error) {
+            console.error('Failed to confirm payment:', error);
+            openAppModal('Network error while confirming payment. Please retry from Step 5.', { title: 'Connection Issue' });
+        } finally {
+            await refreshPaymentQuote();
+            window.history.replaceState({}, document.title, window.location.pathname);
         }
     }
 
@@ -1245,16 +1494,28 @@
             const result = await response.json();
 
             if (response.ok) {
+                bookingData.bookingId = result.bookingId;
+                bookingData.paymentStatus = result.paymentStatus || 'unpaid';
+                if (confirmBtn) {
+                    confirmBtn.innerText = "Confirm Booking";
+                    confirmBtn.disabled = false;
+                }
+                if (result.paymentQuote) {
+                    renderPaymentQuote(result.paymentQuote);
+                } else {
+                    await refreshPaymentQuote();
+                }
+
                 const upsellFollowUp = bookingData.upsellInterest
                     ? ` We also noted your interest in ${bookingData.upsellInterest}.`
                     : '';
                 openAppModal(
-                    `Thank you for choosing 1383 Karaoke Bar & KTV! Your booking request is in. We are preparing the details now and will text you soon with deposit information to secure your reservation.${upsellFollowUp}`,
+                    `Booking request submitted successfully (Booking #${bookingData.bookingId}).${upsellFollowUp} Next step: complete payment in Step 5 to finalize.`,
                     {
                         title: 'Request Received',
-                        buttonText: 'Back to Home',
+                        buttonText: 'Continue to Payment',
                         onClose: () => {
-                            window.location.href = 'homeindex.html';
+                            goToStep(5);
                         }
                     }
                 );

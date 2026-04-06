@@ -6,10 +6,22 @@ const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
+const Stripe = require('stripe');
 const { parsePhoneNumberFromString } = require('libphonenumber-js');
 
+// Load local .env automatically for local development (Node 20.6+).
+try {
+    if (typeof process.loadEnvFile === 'function') {
+        process.loadEnvFile(path.join(__dirname, '.env'));
+    }
+} catch (envErr) {
+    if (String(envErr?.code || '') !== 'ENOENT') {
+        console.warn('⚠️ Failed to load .env file:', envErr.message);
+    }
+}
+
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3000);
 const BCRYPT_ROUNDS = 10;
 const DEFAULT_DATABASE_DIR = path.join(__dirname, 'database');
 const DATABASE_DIR_INPUT = String(process.env.DATABASE_DIR || DEFAULT_DATABASE_DIR).trim();
@@ -43,8 +55,30 @@ const GHL_API_VERSION = String(process.env.GHL_API_VERSION || '2021-07-28').trim
 const GHL_PRIVATE_TOKEN = String(process.env.GHL_PRIVATE_TOKEN || '').trim();
 const GHL_LOCATION_ID = String(process.env.GHL_LOCATION_ID || '').trim();
 const GHL_BOOKING_WORKFLOW_ID = String(process.env.GHL_BOOKING_WORKFLOW_ID || '').trim();
+const GHL_PAYMENT_WORKFLOW_ID = String(process.env.GHL_PAYMENT_WORKFLOW_ID || '').trim();
 const GHL_REQUEST_TIMEOUT_MS = Number(process.env.GHL_REQUEST_TIMEOUT_MS || 8000);
 const GHL_ENABLED = Boolean(GHL_PRIVATE_TOKEN && GHL_LOCATION_ID && GHL_BOOKING_WORKFLOW_ID);
+
+const PAYMENT_CURRENCY = String(process.env.PAYMENT_CURRENCY || 'CAD').trim().toUpperCase();
+const ROOM_FIRST_HOUR_PRICE = {
+    'Small Room': Number(process.env.ROOM_PRICE_SMALL || 55),
+    'Medium Room': Number(process.env.ROOM_PRICE_MEDIUM || 65),
+    'VIP Room': Number(process.env.ROOM_PRICE_VIP || 85),
+    'Large Room': Number(process.env.ROOM_PRICE_VIP || 85)
+};
+
+const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || '').trim();
+const STRIPE_PUBLISHABLE_KEY = String(process.env.STRIPE_PUBLISHABLE_KEY || '').trim();
+const STRIPE_ENABLED = Boolean(STRIPE_SECRET_KEY && STRIPE_PUBLISHABLE_KEY);
+const stripeClient = STRIPE_ENABLED ? new Stripe(STRIPE_SECRET_KEY) : null;
+
+const PAYPAL_CLIENT_ID = String(process.env.PAYPAL_CLIENT_ID || '').trim();
+const PAYPAL_CLIENT_SECRET = String(process.env.PAYPAL_CLIENT_SECRET || '').trim();
+const PAYPAL_ENV = String(process.env.PAYPAL_ENV || 'sandbox').trim().toLowerCase();
+const PAYPAL_ENABLED = Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
+const PAYPAL_API_BASE = PAYPAL_ENV === 'live'
+    ? 'https://api-m.paypal.com'
+    : 'https://api-m.sandbox.paypal.com';
 
 const ipLastRequestAt = new Map();
 const phoneRequestState = new Map();
@@ -59,6 +93,15 @@ function copySeedDatabaseIfNeeded(fileName, targetPath) {
     if (!fs.existsSync(seedPath)) return;
     fs.copyFileSync(seedPath, targetPath);
     console.log(`📦 Seeded database file '${fileName}' to ${DATABASE_DIR}`);
+}
+
+function runAlterTableIgnoreDuplicate(dbConn, sql, label) {
+    dbConn.run(sql, (err) => {
+        if (!err) return;
+        const msg = String(err.message || '').toLowerCase();
+        if (msg.includes('duplicate column name')) return;
+        console.error(`Schema migration failed (${label}):`, err.message);
+    });
 }
 
 copySeedDatabaseIfNeeded('ktv_data.db', KTV_DB_PATH);
@@ -136,6 +179,10 @@ const db = new sqlite3.Database(KTV_DB_PATH, (err) => {
             db.run(`ALTER TABLE bookings ADD COLUMN deposit TEXT DEFAULT 'No'`, (err) => {
                 if (!err) console.log("🌟 数据库自动升级：已增加 'deposit' 押金字段");
             });
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_status TEXT DEFAULT 'unpaid'`, 'bookings.payment_status');
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_method TEXT DEFAULT ''`, 'bookings.payment_method');
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_amount_cents INTEGER DEFAULT 0`, 'bookings.payment_amount_cents');
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_reference TEXT DEFAULT ''`, 'bookings.payment_reference');
         });
     }
 });
@@ -201,8 +248,15 @@ const customerDb = new sqlite3.Database(CUSTOMER_DB_PATH, (err) => {
             phone TEXT NOT NULL,
             first_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
             last_seen DATETIME DEFAULT CURRENT_TIMESTAMP,
+            final_total_amount REAL DEFAULT NULL,
             PRIMARY KEY (name, phone)
-        )`);
+        )`, () => {
+            runAlterTableIgnoreDuplicate(
+                customerDb,
+                `ALTER TABLE valid_customers ADD COLUMN final_total_amount REAL DEFAULT NULL`,
+                'valid_customers.final_total_amount'
+            );
+        });
     }
 });
 
@@ -285,6 +339,15 @@ function dbRun(sql, params = []) {
         db.run(sql, params, function(err) {
             if (err) return reject(err);
             resolve(this);
+        });
+    });
+}
+
+function dbGet(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.get(sql, params, (err, row) => {
+            if (err) return reject(err);
+            resolve(row || null);
         });
     });
 }
@@ -437,6 +500,146 @@ function compactJson(value) {
     return `${safe.slice(0, 147)}...`;
 }
 
+function roundCurrency(value) {
+    return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function toCents(amount) {
+    return Math.round(Number(amount || 0) * 100);
+}
+
+function normalizePaymentStatus(value) {
+    return String(value || '').trim().toLowerCase() === 'paid' ? 'paid' : 'unpaid';
+}
+
+function getRoomFirstHourPrice(room) {
+    const safeRoom = String(room || '').trim();
+    return Number(ROOM_FIRST_HOUR_PRICE[safeRoom] || ROOM_FIRST_HOUR_PRICE['Small Room'] || 0);
+}
+
+function calculateBookingPaymentQuote(booking) {
+    const firstHourPrice = getRoomFirstHourPrice(booking.room);
+    const subtotal = roundCurrency(firstHourPrice);
+    const total = subtotal;
+    const totalCents = toCents(total);
+
+    return {
+        currency: PAYMENT_CURRENCY,
+        roomFirstHourPrice: firstHourPrice,
+        subtotal,
+        total,
+        totalCents,
+        description: `1383 KTV Booking Deposit - ${booking.room} (${booking.date} ${booking.time})`
+    };
+}
+
+function getPublicBaseUrl(req) {
+    const explicit = String(process.env.PUBLIC_BASE_URL || '').trim();
+    if (explicit) return explicit.replace(/\/+$/, '');
+    const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
+    const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+    if (!host) return '';
+    return `${proto}://${host}`;
+}
+
+async function getPayPalAccessToken() {
+    const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
+    const body = new URLSearchParams({ grant_type: 'client_credentials' }).toString();
+    const response = await fetchWithTimeout(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Basic ${auth}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body
+    });
+    const payload = await safeReadJson(response);
+    if (!response.ok || !payload.access_token) {
+        throw new Error(`PayPal token failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
+    }
+    return payload.access_token;
+}
+
+async function createPayPalOrder({ booking, quote, returnUrl, cancelUrl }) {
+    const accessToken = await getPayPalAccessToken();
+    const response = await fetchWithTimeout(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            intent: 'CAPTURE',
+            purchase_units: [
+                {
+                    custom_id: String(booking.id),
+                    invoice_id: `ktv-${booking.id}-${Date.now()}`,
+                    description: quote.description,
+                    amount: {
+                        currency_code: quote.currency,
+                        value: quote.total.toFixed(2)
+                    }
+                }
+            ],
+            application_context: {
+                return_url: returnUrl,
+                cancel_url: cancelUrl
+            }
+        })
+    });
+
+    const payload = await safeReadJson(response);
+    if (!response.ok) {
+        throw new Error(`PayPal create order failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
+    }
+
+    const approveLink = (payload.links || []).find((link) => link.rel === 'approve')?.href || '';
+    return {
+        orderId: payload.id,
+        approveUrl: approveLink
+    };
+}
+
+async function capturePayPalOrder(orderId) {
+    const accessToken = await getPayPalAccessToken();
+    const response = await fetchWithTimeout(`${PAYPAL_API_BASE}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+        }
+    });
+    const payload = await safeReadJson(response);
+    if (!response.ok) {
+        throw new Error(`PayPal capture failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
+    }
+    return payload;
+}
+
+async function markBookingAsPaid({ booking, method, reference, totalCents }) {
+    const sql = `UPDATE bookings
+                 SET payment_status = 'paid',
+                     payment_method = ?,
+                     payment_reference = ?,
+                     payment_amount_cents = ?,
+                     deposit = 'Yes'
+                 WHERE id = ?`;
+    await dbRun(sql, [String(method || ''), String(reference || ''), Number(totalCents || 0), Number(booking.id)]);
+
+    syncValidCustomer(booking.name, booking.phone);
+    syncHistoricalOrder({
+        booking_id: Number(booking.id),
+        room: booking.room,
+        partySize: booking.partySize,
+        date: booking.date,
+        time: booking.time,
+        duration: booking.duration,
+        name: booking.name,
+        phone: booking.phone,
+        deposit: 'Yes'
+    });
+}
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = GHL_REQUEST_TIMEOUT_MS) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -567,6 +770,25 @@ async function triggerBookingMessageInGhl(booking) {
     return { sent: true, contactId };
 }
 
+async function triggerPaymentConfirmedMessageInGhl(booking) {
+    if (!GHL_PRIVATE_TOKEN || !GHL_LOCATION_ID || !GHL_PAYMENT_WORKFLOW_ID) {
+        return { sent: false, reason: 'GHL payment workflow is not configured.' };
+    }
+
+    const contactId = await upsertContactInGhl(booking);
+    const workflowUrl = `${GHL_API_BASE_URL}/contacts/${encodeURIComponent(contactId)}/workflow/${encodeURIComponent(GHL_PAYMENT_WORKFLOW_ID)}`;
+    const response = await fetchWithTimeout(workflowUrl, {
+        method: 'POST',
+        headers: getGhlHeaders(),
+        body: JSON.stringify({ locationId: GHL_LOCATION_ID })
+    });
+    const payload = await safeReadJson(response);
+    if (!response.ok) {
+        throw new Error(`GHL payment workflow failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
+    }
+    return { sent: true, contactId };
+}
+
 async function verifyCaptchaToken(captchaToken, req) {
     if (!CAPTCHA_ENABLED) {
         return { ok: true, skipped: true };
@@ -683,6 +905,22 @@ function syncValidCustomer(name, phone) {
     });
 }
 
+function updateValidCustomerFinalAmount(name, phone, finalTotalAmount) {
+    const safeName = String(name || '').trim();
+    const safePhone = String(phone || '').trim();
+    if (!safeName || !safePhone) return;
+
+    const normalizedAmount = Number(finalTotalAmount);
+    if (!Number.isFinite(normalizedAmount) || normalizedAmount < 0) return;
+
+    const sql = `UPDATE valid_customers
+                 SET final_total_amount = ?, last_seen = CURRENT_TIMESTAMP
+                 WHERE name = ? AND phone = ?`;
+    customerDb.run(sql, [roundCurrency(normalizedAmount), safeName, safePhone], (err) => {
+        if (err) console.error('Failed to update valid customer amount:', err.message);
+    });
+}
+
 // 删除 valid_customer (用于 deposit 回滚)
 function removeValidCustomer(name, phone) {
     const safeName = String(name || '').trim();
@@ -759,7 +997,14 @@ app.get('/api/public/security-config', (req, res) => {
     res.status(200).json({
         captchaEnabled: CAPTCHA_ENABLED,
         captchaProvider: CAPTCHA_ENABLED ? 'turnstile' : '',
-        turnstileSiteKey: CAPTCHA_ENABLED ? TURNSTILE_SITE_KEY : ''
+        turnstileSiteKey: CAPTCHA_ENABLED ? TURNSTILE_SITE_KEY : '',
+        payment: {
+            currency: PAYMENT_CURRENCY,
+            providers: {
+                stripe: { enabled: STRIPE_ENABLED, publishableKey: STRIPE_ENABLED ? STRIPE_PUBLISHABLE_KEY : '' },
+                paypal: { enabled: PAYPAL_ENABLED, env: PAYPAL_ENV }
+            }
+        }
     });
 });
 
@@ -781,7 +1026,8 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
         return res.status(phoneLimitResult.statusCode || 429).json({ error: phoneLimitResult.error });
     }
 
-    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone) VALUES (?, ?, ?, ?, ?, ?, ?)`;
+    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '')`;
 
     try {
         const runResult = await dbRun(sql, [
@@ -795,6 +1041,16 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
         ]);
         const bookingId = runResult.lastID;
         syncValidCustomer(bookingData.name, bookingData.phone);
+        const paymentQuote = calculateBookingPaymentQuote({
+            id: bookingId,
+            room: bookingData.room,
+            partySize: bookingData.partySize,
+            date: bookingData.date,
+            time: bookingData.time,
+            duration: bookingData.duration,
+            name: bookingData.name,
+            phone: bookingData.phone
+        });
 
         let notification = { sent: false, reason: '' };
         try {
@@ -818,11 +1074,249 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             message: 'Booking successful!',
             bookingId,
             notification,
-            normalizedPhone: bookingData.phone
+            normalizedPhone: bookingData.phone,
+            paymentStatus: 'unpaid',
+            paymentQuote,
+            paymentProviders: {
+                stripe: STRIPE_ENABLED,
+                paypal: PAYPAL_ENABLED
+            }
         });
     } catch (err) {
         console.error('Error inserting data:', err.message);
         return res.status(500).json({ error: 'Failed to save booking to database.' });
+    }
+});
+
+app.get('/api/book/:id/payment-quote', async (req, res) => {
+    try {
+        const bookingId = Number(req.params.id);
+        if (!Number.isFinite(bookingId) || bookingId <= 0) {
+            return res.status(400).json({ error: 'Invalid booking id.' });
+        }
+
+        const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
+        if (!booking) {
+            return res.status(404).json({ error: 'Booking not found.' });
+        }
+
+        const paymentQuote = calculateBookingPaymentQuote(booking);
+        return res.status(200).json({
+            bookingId: booking.id,
+            paymentStatus: normalizePaymentStatus(booking.payment_status),
+            paymentQuote,
+            paymentProviders: {
+                stripe: STRIPE_ENABLED,
+                paypal: PAYPAL_ENABLED
+            }
+        });
+    } catch (err) {
+        console.error('Failed to fetch payment quote:', err.message);
+        return res.status(500).json({ error: 'Failed to fetch payment quote.' });
+    }
+});
+
+app.post('/api/book/:id/payment/start', async (req, res) => {
+    try {
+        const bookingId = Number(req.params.id);
+        const provider = String(req.body?.provider || '').trim().toLowerCase();
+        const phoneCandidates = buildPhoneQueryCandidates(req.body?.phone || '');
+
+        if (!Number.isFinite(bookingId) || bookingId <= 0) {
+            return res.status(400).json({ error: 'Invalid booking id.' });
+        }
+        if (!['stripe', 'paypal'].includes(provider)) {
+            return res.status(400).json({ error: 'Unsupported payment provider.' });
+        }
+        if (!phoneCandidates.length) {
+            return res.status(400).json({ error: 'Invalid phone number.' });
+        }
+
+        const placeholders = phoneCandidates.map(() => '?').join(', ');
+        const booking = await dbGet(
+            `SELECT * FROM bookings WHERE id = ? AND phone IN (${placeholders})`,
+            [bookingId, ...phoneCandidates]
+        );
+        if (!booking) {
+            return res.status(404).json({ error: 'Booking not found or phone does not match.' });
+        }
+
+        if (normalizePaymentStatus(booking.payment_status) === 'paid') {
+            return res.status(200).json({
+                message: 'Booking is already paid.',
+                paymentStatus: 'paid'
+            });
+        }
+
+        const quote = calculateBookingPaymentQuote(booking);
+        if (!Number.isFinite(quote.totalCents) || quote.totalCents <= 0) {
+            return res.status(400).json({ error: 'Invalid payment amount.' });
+        }
+
+        const baseUrl = getPublicBaseUrl(req);
+        if (!baseUrl) {
+            return res.status(500).json({ error: 'Unable to resolve public URL for payment redirect.' });
+        }
+
+        if (provider === 'stripe') {
+            if (!STRIPE_ENABLED || !stripeClient) {
+                return res.status(400).json({ error: 'Stripe is not configured yet.' });
+            }
+
+            const session = await stripeClient.checkout.sessions.create({
+                mode: 'payment',
+                payment_method_types: ['card'],
+                line_items: [
+                    {
+                        quantity: 1,
+                        price_data: {
+                            currency: quote.currency.toLowerCase(),
+                            unit_amount: quote.totalCents,
+                            product_data: {
+                                name: quote.description
+                            }
+                        }
+                    }
+                ],
+                metadata: {
+                    bookingId: String(booking.id),
+                    provider: 'stripe'
+                },
+                success_url: `${baseUrl}/pages/booking.html?payment=success&provider=stripe&bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}`
+            });
+
+            return res.status(200).json({
+                provider: 'stripe',
+                checkoutUrl: session.url,
+                sessionId: session.id,
+                paymentQuote: quote
+            });
+        }
+
+        if (!PAYPAL_ENABLED) {
+            return res.status(400).json({ error: 'PayPal is not configured yet.' });
+        }
+
+        const paypalOrder = await createPayPalOrder({
+            booking,
+            quote,
+            returnUrl: `${baseUrl}/pages/booking.html?payment=success&provider=paypal&bookingId=${booking.id}`,
+            cancelUrl: `${baseUrl}/pages/booking.html?payment=cancel&provider=paypal&bookingId=${booking.id}`
+        });
+
+        return res.status(200).json({
+            provider: 'paypal',
+            checkoutUrl: paypalOrder.approveUrl,
+            orderId: paypalOrder.orderId,
+            paymentQuote: quote
+        });
+    } catch (err) {
+        console.error('Failed to start payment:', err.message);
+        return res.status(500).json({ error: 'Failed to start payment.' });
+    }
+});
+
+app.post('/api/book/:id/payment/confirm', async (req, res) => {
+    try {
+        const bookingId = Number(req.params.id);
+        const provider = String(req.body?.provider || '').trim().toLowerCase();
+        if (!Number.isFinite(bookingId) || bookingId <= 0) {
+            return res.status(400).json({ error: 'Invalid booking id.' });
+        }
+        if (!['stripe', 'paypal'].includes(provider)) {
+            return res.status(400).json({ error: 'Unsupported payment provider.' });
+        }
+
+        const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
+        if (!booking) {
+            return res.status(404).json({ error: 'Booking not found.' });
+        }
+        if (normalizePaymentStatus(booking.payment_status) === 'paid') {
+            return res.status(200).json({
+                message: 'Payment already confirmed.',
+                bookingId: booking.id,
+                paymentStatus: 'paid'
+            });
+        }
+
+        const quote = calculateBookingPaymentQuote(booking);
+
+        if (provider === 'stripe') {
+            if (!STRIPE_ENABLED || !stripeClient) {
+                return res.status(400).json({ error: 'Stripe is not configured yet.' });
+            }
+            const sessionId = String(req.body?.sessionId || req.body?.stripeSessionId || '').trim();
+            if (!sessionId) {
+                return res.status(400).json({ error: 'Missing Stripe session id.' });
+            }
+
+            const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+            const paid = String(session.payment_status || '').toLowerCase() === 'paid';
+            const metaBookingId = Number(session.metadata?.bookingId || 0);
+            if (!paid || metaBookingId !== booking.id) {
+                return res.status(400).json({ error: 'Stripe payment is not completed or does not match booking.' });
+            }
+
+            await markBookingAsPaid({
+                booking,
+                method: 'stripe',
+                reference: session.id,
+                totalCents: quote.totalCents
+            });
+        } else {
+            if (!PAYPAL_ENABLED) {
+                return res.status(400).json({ error: 'PayPal is not configured yet.' });
+            }
+            const orderId = String(req.body?.orderId || req.body?.paypalOrderId || req.query?.token || '').trim();
+            if (!orderId) {
+                return res.status(400).json({ error: 'Missing PayPal order id.' });
+            }
+
+            const capture = await capturePayPalOrder(orderId);
+            const completed = String(capture.status || '').toUpperCase() === 'COMPLETED';
+            const customBookingId = Number(capture.purchase_units?.[0]?.payments?.captures?.[0]?.custom_id
+                || capture.purchase_units?.[0]?.custom_id
+                || 0);
+            if (!completed || customBookingId !== booking.id) {
+                return res.status(400).json({ error: 'PayPal payment is not completed or does not match booking.' });
+            }
+
+            const captureId = capture.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderId;
+            await markBookingAsPaid({
+                booking,
+                method: 'paypal',
+                reference: captureId,
+                totalCents: quote.totalCents
+            });
+        }
+
+        let paymentNotification = { sent: false, reason: '' };
+        try {
+            paymentNotification = await triggerPaymentConfirmedMessageInGhl({
+                bookingId: booking.id,
+                room: booking.room,
+                partySize: booking.partySize,
+                date: booking.date,
+                time: booking.time,
+                duration: booking.duration,
+                name: booking.name,
+                phone: booking.phone
+            });
+        } catch (notifyErr) {
+            paymentNotification = { sent: false, reason: notifyErr.message };
+            console.error('GHL payment confirmation failed:', notifyErr.message);
+        }
+
+        return res.status(200).json({
+            message: 'Payment confirmed successfully.',
+            bookingId: booking.id,
+            paymentStatus: 'paid',
+            paymentNotification
+        });
+    } catch (err) {
+        console.error('Failed to confirm payment:', err.message);
+        return res.status(500).json({ error: 'Failed to confirm payment.' });
     }
 });
 
@@ -953,10 +1447,33 @@ app.get('/api/admin/history-orders', checkAdminLogin, (req, res) => {
 
 // 有效客户列表（去重：name + phone）
 app.get('/api/admin/valid-customers', checkAdminLogin, (req, res) => {
-    const sql = `SELECT name, phone, first_seen, last_seen FROM valid_customers ORDER BY last_seen DESC`;
+    const sql = `SELECT name, phone, first_seen, last_seen, final_total_amount FROM valid_customers ORDER BY last_seen DESC`;
     customerDb.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Failed to fetch valid customers.' });
         res.status(200).json({ total: rows.length, data: rows });
+    });
+});
+
+app.put('/api/admin/valid-customers/amount', checkAdminLogin, (req, res) => {
+    const { name, phone, finalTotalAmount } = req.body || {};
+    const safeName = String(name || '').trim();
+    const safePhone = String(phone || '').trim();
+    const amount = Number(finalTotalAmount);
+
+    if (!safeName || !safePhone) {
+        return res.status(400).json({ error: 'Name and phone are required.' });
+    }
+    if (!Number.isFinite(amount) || amount < 0) {
+        return res.status(400).json({ error: 'Final total amount must be a valid non-negative number.' });
+    }
+
+    const sql = `UPDATE valid_customers
+                 SET final_total_amount = ?, last_seen = CURRENT_TIMESTAMP
+                 WHERE name = ? AND phone = ?`;
+    customerDb.run(sql, [roundCurrency(amount), safeName, safePhone], function(err) {
+        if (err) return res.status(500).json({ error: 'Failed to update customer final total amount.' });
+        if (!this.changes) return res.status(404).json({ error: 'Customer record not found.' });
+        res.status(200).json({ message: 'Customer final total amount updated.' });
     });
 });
 
@@ -980,6 +1497,76 @@ app.post('/api/admin/add', checkAdminLogin, async (req, res) => {
             return res.status(400).json({ error: 'Username already exists.' });
         }
         res.status(500).json({ error: 'Failed to add admin.' });
+    }
+});
+
+app.post('/api/admin/bookings/manual', checkAdminLogin, async (req, res) => {
+    try {
+        const payload = req.body || {};
+        const room = String(payload.room || '').trim();
+        const partySize = Number(payload.partySize);
+        const date = String(payload.date || '').trim();
+        const time = String(payload.time || '').trim();
+        const duration = Number(payload.duration);
+        const name = String(payload.name || '').trim().replace(/\s+/g, ' ');
+        const phoneRaw = String(payload.phone || '').trim();
+        const phoneValidation = normalizeAndValidatePhoneNumber(phoneRaw);
+        const safePhone = phoneValidation.ok ? phoneValidation.e164 : phoneRaw;
+        const paymentStatus = normalizePaymentStatus(payload.paymentStatus);
+        const paymentMethod = String(payload.paymentMethod || 'admin-manual').trim().slice(0, 40) || 'admin-manual';
+        const providedAmount = Number(payload.paymentAmount);
+
+        if (!room || !name || !safePhone || !Number.isFinite(partySize) || !Number.isFinite(duration) || !date || !time) {
+            return res.status(400).json({ error: 'Missing required booking fields.' });
+        }
+
+        const amountCents = Number.isFinite(providedAmount) && providedAmount >= 0
+            ? toCents(roundCurrency(providedAmount))
+            : 0;
+        const deposit = paymentStatus === 'paid' ? 'Yes' : 'No';
+
+        const sql = `INSERT INTO bookings (
+                        room, partySize, date, time, duration, name, phone, deposit,
+                        payment_status, payment_method, payment_amount_cents, payment_reference
+                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+        const runResult = await dbRun(sql, [
+            room,
+            partySize,
+            date,
+            time,
+            duration,
+            name,
+            safePhone,
+            deposit,
+            paymentStatus,
+            paymentMethod,
+            amountCents,
+            ''
+        ]);
+
+        if (paymentStatus === 'paid') {
+            syncValidCustomer(name, safePhone);
+            syncHistoricalOrder({
+                booking_id: Number(runResult.lastID),
+                room,
+                partySize,
+                date,
+                time,
+                duration,
+                name,
+                phone: safePhone,
+                deposit: 'Yes'
+            });
+        }
+
+        return res.status(200).json({
+            message: 'Manual booking added successfully.',
+            bookingId: runResult.lastID
+        });
+    } catch (err) {
+        console.error('Failed to create manual admin booking:', err.message);
+        return res.status(500).json({ error: 'Failed to create manual booking.' });
     }
 });
 
@@ -1035,34 +1622,33 @@ app.delete('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
 // 5.8 修改指定预订记录 API (受保护)
 app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
     const bookingId = req.params.id;
-    // 🌟 新增接收 deposit 字段
-    const { room, partySize, date, time, duration, name, phone, deposit } = req.body;
-    const normalizedDeposit = normalizeDepositValue(deposit);
+    const { room, partySize, date, time, duration, name, phone, deposit, paymentStatus, paymentAmount } = req.body;
+    const normalizedPaymentStatus = normalizePaymentStatus(paymentStatus || (normalizeDepositValue(deposit) === 'Yes' ? 'paid' : 'unpaid'));
+    const normalizedDeposit = normalizedPaymentStatus === 'paid' ? 'Yes' : 'No';
+    const amountCents = Number.isFinite(Number(paymentAmount)) && Number(paymentAmount) >= 0
+        ? toCents(roundCurrency(paymentAmount))
+        : 0;
+    const phoneValidation = normalizeAndValidatePhoneNumber(phone);
+    const normalizedPhone = phoneValidation.ok ? phoneValidation.e164 : String(phone || '').trim();
 
     // 先查询旧的 deposit 状态，用于判断是否需要回滚
     db.get(`SELECT deposit FROM bookings WHERE id = ?`, [bookingId], (err, oldRow) => {
         if (err) return res.status(500).json({ error: 'Failed to fetch old booking data.' });
 
         const oldDeposit = oldRow ? normalizeDepositValue(oldRow.deposit) : 'No';
-        const isDepositChanged = oldDeposit !== normalizedDeposit;
         const isDepositRevertedFromYesToNo = oldDeposit === 'Yes' && normalizedDeposit === 'No';
 
-        // 🌟 SQL 增加 deposit 更新
         const sql = `UPDATE bookings 
-                     SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?, deposit = ? 
+                     SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?, deposit = ?, payment_status = ?, payment_amount_cents = ? 
                      WHERE id = ?`;
 
-        // 🌟 传入 deposit 参数，如果没有传默认给 'No'
-        db.run(sql, [room, partySize, date, time, duration, name, phone, normalizedDeposit, bookingId], function(err) {
+        db.run(sql, [room, partySize, date, time, duration, name, normalizedPhone, normalizedDeposit, normalizedPaymentStatus, amountCents, bookingId], function(err) {
             if (err) return res.status(500).json({ error: 'Failed to update booking.' });
 
-            // 🌟 核心逻辑：处理 deposit 状态变化
             if (isDepositRevertedFromYesToNo) {
-                // 如果从 Yes 改回 No，删除 history_orders 和 valid_customers 里的记录
                 removeHistoricalOrder(Number(bookingId));
-                removeValidCustomer(name, phone);
+                removeValidCustomer(name, normalizedPhone);
             } else if (normalizedDeposit === 'Yes') {
-                // 如果改成 Yes，添加到 history_orders 和 valid_customers
                 syncHistoricalOrder({
                     booking_id: Number(bookingId),
                     room,
@@ -1071,10 +1657,10 @@ app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
                     time,
                     duration,
                     name,
-                    phone,
+                    phone: normalizedPhone,
                     deposit: normalizedDeposit
                 });
-                syncValidCustomer(name, phone);
+                syncValidCustomer(name, normalizedPhone);
             }
 
             res.json({ message: 'Booking updated successfully.' });
@@ -1090,4 +1676,5 @@ app.listen(PORT, () => {
     console.log(`💾 DATABASE_DIR: ${DATABASE_DIR}`);
     console.log(`🛡️ CAPTCHA ${CAPTCHA_ENABLED ? 'enabled' : 'disabled'} (${CAPTCHA_PROVIDER})`);
     console.log(`📨 GoHighLevel workflow notification ${GHL_ENABLED ? 'enabled' : 'disabled'}`);
+    console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? 'enabled' : 'disabled'}) / PayPal(${PAYPAL_ENABLED ? 'enabled' : 'disabled'})`);
 });

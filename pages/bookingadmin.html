@@ -40,7 +40,10 @@
     <section id="tab-bookings" class="content-section active">
         <div class="section-header">
             <h2>Recent Bookings</h2>
-            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadBookings()">🔄 Refresh</button>
+            <div style="display: flex; gap: 10px;">
+                <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="openManualBookingModal()">+ Manual Add Booking</button>
+                <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadBookings()">🔄 Refresh</button>
+            </div>
         </div>
 
         <table class="admin-table">
@@ -53,7 +56,8 @@
                 <th>Party Size</th>
                 <th>Customer Name</th>
                 <th>Phone</th>
-                <th>Deposit</th>
+                <th>Payment Status</th>
+                <th>Paid Amount</th>
                 <th>Actions</th>
             </tr>
             </thead>
@@ -106,6 +110,8 @@
                 <th>Phone</th>
                 <th>First Seen</th>
                 <th>Last Seen</th>
+                <th>Final Total Amount</th>
+                <th>Actions</th>
             </tr>
             </thead>
             <tbody id="valid-customers-body">
@@ -212,17 +218,92 @@
                 <input type="text" id="edit-b-phone" class="neon-input">
             </div>
             <div class="input-group" style="flex: 1;">
-                <label style="color: #10B981;">Deposit Paid?</label>
-                <select id="edit-b-deposit" class="neon-input" style="background-color: rgba(17, 24, 39, 0.9); border-color: #10B981;">
-                    <option value="No">No 🔴</option>
-                    <option value="Yes">Yes 🟢</option>
+                <label style="color: #10B981;">Payment Status</label>
+                <select id="edit-b-payment-status" class="neon-input" style="background-color: rgba(17, 24, 39, 0.9); border-color: #10B981;">
+                    <option value="unpaid">Unpaid 🔴</option>
+                    <option value="paid">Paid 🟢</option>
                 </select>
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Paid Amount (CAD)</label>
+                <input type="number" step="0.01" min="0" id="edit-b-payment-amount" class="neon-input" placeholder="0.00">
             </div>
         </div>
 
         <div class="modal-actions">
             <button class="btn-primary" style="background: transparent; border: 1px solid var(--text-muted);" onclick="closeModal('edit-booking-modal')">Cancel</button>
             <button class="btn-primary" style="width: auto;" onclick="submitEditBooking()">Save Changes</button>
+        </div>
+    </div>
+</div>
+
+<div id="manual-booking-modal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 700px;">
+        <h3>Add Manual Booking (Admin)</h3>
+
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex: 1;">
+                <label>Date</label>
+                <input type="date" id="manual-b-date" class="neon-input">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Time</label>
+                <input type="time" id="manual-b-time" class="neon-input">
+            </div>
+        </div>
+
+        <div class="input-group">
+            <label>Room</label>
+            <select id="manual-b-room" class="neon-input" style="background-color: rgba(17, 24, 39, 0.9);">
+                <option value="Small Room">Small Room</option>
+                <option value="Medium Room">Medium Room</option>
+                <option value="VIP Room">VIP Room</option>
+            </select>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex: 1;">
+                <label>Duration (Hours)</label>
+                <input type="number" id="manual-b-duration" class="neon-input" min="1" value="2">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Party Size</label>
+                <input type="number" id="manual-b-party" class="neon-input" min="1" value="2">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex: 1;">
+                <label>Customer Name</label>
+                <input type="text" id="manual-b-name" class="neon-input">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Phone</label>
+                <input type="text" id="manual-b-phone" class="neon-input">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px;">
+            <div class="input-group" style="flex: 1;">
+                <label style="color: #10B981;">Payment Status</label>
+                <select id="manual-b-payment-status" class="neon-input" style="background-color: rgba(17, 24, 39, 0.9); border-color: #10B981;">
+                    <option value="unpaid">Unpaid 🔴</option>
+                    <option value="paid">Paid 🟢</option>
+                </select>
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Paid Amount (CAD)</label>
+                <input type="number" step="0.01" min="0" id="manual-b-payment-amount" class="neon-input" placeholder="0.00">
+            </div>
+            <div class="input-group" style="flex: 1;">
+                <label>Payment Method Label</label>
+                <input type="text" id="manual-b-payment-method" class="neon-input" placeholder="admin-manual">
+            </div>
+        </div>
+
+        <div class="modal-actions">
+            <button class="btn-primary" style="background: transparent; border: 1px solid var(--text-muted);" onclick="closeModal('manual-booking-modal')">Cancel</button>
+            <button class="btn-primary" style="width: auto;" onclick="submitManualBooking()">Create Booking</button>
         </div>
     </div>
 </div>
@@ -303,7 +384,7 @@
 
     async function loadBookings() {
         const tbody = document.getElementById('bookings-table-body');
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align: center;">Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align: center;">Loading...</td></tr>';
 
         try {
             const res = await fetch('/api/admin/bookings', { headers: getAuthHeaders() });
@@ -312,7 +393,7 @@
             const result = await res.json();
 
             if (result.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align: center; color: var(--text-muted);">No bookings found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align: center; color: var(--text-muted);">No bookings found.</td></tr>';
                 allBookingsData = [];
                 renderWeeklyTimetable(); // 清空并渲染空的周历
                 loadHistoryOrders();
@@ -326,12 +407,17 @@
             tbody.innerHTML = '';
             result.data.forEach(b => {
                 const tr = document.createElement('tr');
-
-                // 🌟 渲染红绿押金标签 (兼容旧数据，如果是 undefined 默认是 No)
-                const isPaid = (b.deposit === 'Yes');
-                const depositBadge = isPaid
+                const paymentStatus = String(b.payment_status || '').toLowerCase() === 'paid' || String(b.deposit || '') === 'Yes' ? 'paid' : 'unpaid';
+                const statusBadge = paymentStatus === 'paid'
                     ? `<span style="background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">Paid</span>`
-                    : `<span style="background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">No</span>`;
+                    : `<span style="background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">Unpaid</span>`;
+                const paidAmount = Number(b.payment_amount_cents || 0) / 100;
+                const safeRoom = String(b.room || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const safeDate = String(b.date || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const safeTime = String(b.time || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const safeDuration = String(b.duration || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const safeName = String(b.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const safePhone = String(b.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
 
                 tr.innerHTML = `
                     <td>#${b.id}</td>
@@ -341,9 +427,10 @@
                     <td>${b.partySize}</td>
                     <td>${b.name}</td>
                     <td>${b.phone}</td>
-                    <td>${depositBadge}</td>
+                    <td>${statusBadge}</td>
+                    <td>$${paidAmount.toFixed(2)}</td>
                     <td>
-                        <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${b.room}', '${b.partySize}', '${b.date}', '${b.time}', '${b.duration}', '${b.name}', '${b.phone}', '${b.deposit || 'No'}')">Edit</button>
+                        <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${safeRoom}', '${b.partySize}', '${safeDate}', '${safeTime}', '${safeDuration}', '${safeName}', '${safePhone}', '${paymentStatus}', '${paidAmount.toFixed(2)}')">Edit</button>
                         <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>
                     </td>
                 `;
@@ -408,7 +495,7 @@
     async function loadValidCustomers() {
         const tbody = document.getElementById('valid-customers-body');
         if (!tbody) return;
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>';
 
         try {
             const res = await fetch('/api/admin/valid-customers', { headers: getAuthHeaders() });
@@ -418,24 +505,32 @@
             if (!res.ok) throw new Error(result.error || 'Failed to load valid customers');
 
             if (!result.data || result.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: var(--text-muted);">No valid customers found.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-muted);">No valid customers found.</td></tr>';
                 return;
             }
 
             tbody.innerHTML = '';
             result.data.forEach(customer => {
                 const tr = document.createElement('tr');
+                const amountValue = customer.final_total_amount === null || customer.final_total_amount === undefined
+                    ? ''
+                    : Number(customer.final_total_amount).toFixed(2);
+                const escapedName = String(customer.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const escapedPhone = String(customer.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const inputId = `final-amount-${encodeURIComponent(`${customer.name}|${customer.phone}`)}`;
                 tr.innerHTML = `
                     <td>${customer.name}</td>
                     <td>${customer.phone}</td>
                     <td>${customer.first_seen || '-'}</td>
                     <td>${customer.last_seen || '-'}</td>
+                    <td><input type="number" step="0.01" min="0" id="${inputId}" class="neon-input" value="${amountValue}" placeholder="0.00"></td>
+                    <td><button class="action-btn btn-primary" onclick="saveCustomerFinalAmount('${escapedName}', '${escapedPhone}')">Save</button></td>
                 `;
                 tbody.appendChild(tr);
             });
         } catch (err) {
             console.error('Failed to load valid customers:', err);
-            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color: red;">Failed to load valid customers.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: red;">Failed to load valid customers.</td></tr>';
         }
     }
 
@@ -603,8 +698,9 @@
                 <div>${b.partySize}p</div>
             `;
 
-                // 🌟 把 deposit 也传进去，让用户点击周历块也能在弹窗里看到押金状态
-                slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone, b.deposit || 'No');
+                const status = String(b.payment_status || '').toLowerCase() === 'paid' || String(b.deposit || '') === 'Yes' ? 'paid' : 'unpaid';
+                const paidAmount = ((Number(b.payment_amount_cents || 0)) / 100).toFixed(2);
+                slot.onclick = () => openEditBookingModal(b.id, b.room, b.partySize, b.date, b.time, b.duration, b.name, b.phone, status, paidAmount);
                 eventsArea.appendChild(slot);
             });
 
@@ -709,8 +805,7 @@
         document.getElementById(modalId).style.display = 'none';
     }
 
-    // 🌟 修改：接收 deposit 参数，并展示在 UI 上
-    function openEditBookingModal(id, room, partySize, date, time, duration, name, phone, deposit) {
+    function openEditBookingModal(id, room, partySize, date, time, duration, name, phone, paymentStatus, paymentAmount) {
         document.getElementById('edit-b-id-display').innerText = id;
         document.getElementById('edit-b-id').value = id;
         document.getElementById('edit-b-room').value = room;
@@ -720,10 +815,8 @@
         document.getElementById('edit-b-duration').value = duration;
         document.getElementById('edit-b-name').value = name;
         document.getElementById('edit-b-phone').value = phone;
-
-        // 设置押金状态 (如果是旧数据可能会是 undefined，所以用 || 'No' 兜底)
-        document.getElementById('edit-b-deposit').value = deposit || 'No';
-
+        document.getElementById('edit-b-payment-status').value = (paymentStatus || 'unpaid');
+        document.getElementById('edit-b-payment-amount').value = paymentAmount || '0.00';
         document.getElementById('edit-booking-modal').style.display = 'flex';
     }
 
@@ -737,8 +830,8 @@
             duration: document.getElementById('edit-b-duration').value,
             name: document.getElementById('edit-b-name').value,
             phone: document.getElementById('edit-b-phone').value,
-            // 🌟 获取管理员选择的押金状态
-            deposit: document.getElementById('edit-b-deposit').value
+            paymentStatus: document.getElementById('edit-b-payment-status').value,
+            paymentAmount: document.getElementById('edit-b-payment-amount').value
         };
 
         try {
@@ -758,6 +851,85 @@
         } catch (error) {
             console.error('Real error:', error);
             alert('Check console for details.');
+        }
+    }
+
+    async function saveCustomerFinalAmount(name, phone) {
+        const inputId = `final-amount-${encodeURIComponent(`${name}|${phone}`)}`;
+        const amountInput = document.getElementById(inputId);
+        if (!amountInput) return;
+
+        const finalTotalAmount = Number(amountInput.value);
+        if (!Number.isFinite(finalTotalAmount) || finalTotalAmount < 0) {
+            return alert('Please enter a valid non-negative amount.');
+        }
+
+        try {
+            const res = await fetch('/api/admin/valid-customers/amount', {
+                method: 'PUT',
+                headers: getAuthHeaders(),
+                body: JSON.stringify({ name, phone, finalTotalAmount })
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                return alert(result.error || 'Failed to save amount.');
+            }
+            alert('Final total amount updated.');
+            loadValidCustomers();
+        } catch (err) {
+            console.error('Failed to update final amount:', err);
+            alert('Network error while saving amount.');
+        }
+    }
+
+    function openManualBookingModal() {
+        document.getElementById('manual-b-date').value = '';
+        document.getElementById('manual-b-time').value = '';
+        document.getElementById('manual-b-room').value = 'Small Room';
+        document.getElementById('manual-b-duration').value = 2;
+        document.getElementById('manual-b-party').value = 2;
+        document.getElementById('manual-b-name').value = '';
+        document.getElementById('manual-b-phone').value = '';
+        document.getElementById('manual-b-payment-status').value = 'unpaid';
+        document.getElementById('manual-b-payment-amount').value = '';
+        document.getElementById('manual-b-payment-method').value = 'admin-manual';
+        document.getElementById('manual-booking-modal').style.display = 'flex';
+    }
+
+    async function submitManualBooking() {
+        const payload = {
+            room: document.getElementById('manual-b-room').value,
+            partySize: document.getElementById('manual-b-party').value,
+            date: document.getElementById('manual-b-date').value,
+            time: document.getElementById('manual-b-time').value,
+            duration: document.getElementById('manual-b-duration').value,
+            name: document.getElementById('manual-b-name').value,
+            phone: document.getElementById('manual-b-phone').value,
+            paymentStatus: document.getElementById('manual-b-payment-status').value,
+            paymentAmount: document.getElementById('manual-b-payment-amount').value,
+            paymentMethod: document.getElementById('manual-b-payment-method').value
+        };
+
+        if (!payload.room || !payload.date || !payload.time || !payload.duration || !payload.name || !payload.phone) {
+            return alert('Please fill all required fields.');
+        }
+
+        try {
+            const res = await fetch('/api/admin/bookings/manual', {
+                method: 'POST',
+                headers: getAuthHeaders(),
+                body: JSON.stringify(payload)
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                return alert(result.error || 'Failed to create manual booking.');
+            }
+            alert(`Manual booking created (#${result.bookingId}).`);
+            closeModal('manual-booking-modal');
+            loadBookings();
+        } catch (err) {
+            console.error('Failed to create manual booking:', err);
+            alert('Network error while creating manual booking.');
         }
     }
 </script>
