@@ -33,6 +33,11 @@ const ADMIN_DB_PATH = path.join(DATABASE_DIR, 'admin.db');
 const HISTORY_DB_PATH = path.join(DATABASE_DIR, 'history_orders.db');
 const CUSTOMER_DB_PATH = path.join(DATABASE_DIR, 'valid_customers.db');
 const TRUST_PROXY_HOPS = Number(process.env.TRUST_PROXY_HOPS || 0);
+const ADMIN_BOOTSTRAP_USERNAME = String(process.env.ADMIN_BOOTSTRAP_USERNAME || '').trim();
+const ADMIN_BOOTSTRAP_PASSWORD = String(process.env.ADMIN_BOOTSTRAP_PASSWORD || '').trim();
+const ADMIN_BOOTSTRAP_FORCE_RESET = ['1', 'true', 'yes', 'on'].includes(
+    String(process.env.ADMIN_BOOTSTRAP_FORCE_RESET || '').trim().toLowerCase()
+);
 
 const BOOKING_IP_WINDOW_MS = Number(process.env.BOOKING_IP_WINDOW_MS || 10 * 60 * 1000);
 const BOOKING_IP_MAX_REQUESTS = Number(process.env.BOOKING_IP_MAX_REQUESTS || 30);
@@ -204,6 +209,8 @@ const adminDb = new sqlite3.Database(ADMIN_DB_PATH, (err) => {
                 return;
             }
             await migratePlaintextAdminPasswords();
+            await ensureBootstrapAdminAccount();
+            await logAdminAccountSummary();
         });
     }
 });
@@ -891,6 +898,47 @@ async function migratePlaintextAdminPasswords() {
     }
 }
 
+async function ensureBootstrapAdminAccount() {
+    if (!ADMIN_BOOTSTRAP_USERNAME || !ADMIN_BOOTSTRAP_PASSWORD) return;
+
+    try {
+        const hashed = await hashPassword(ADMIN_BOOTSTRAP_PASSWORD);
+        if (ADMIN_BOOTSTRAP_FORCE_RESET) {
+            await adminDbRun(
+                `INSERT INTO admins (username, password)
+                 VALUES (?, ?)
+                 ON CONFLICT(username)
+                 DO UPDATE SET password = excluded.password`,
+                [ADMIN_BOOTSTRAP_USERNAME, hashed]
+            );
+            console.log(`🔐 Bootstrap admin ensured (force reset): ${ADMIN_BOOTSTRAP_USERNAME}`);
+            return;
+        }
+
+        const existing = await adminDbGet(`SELECT id FROM admins WHERE username = ?`, [ADMIN_BOOTSTRAP_USERNAME]);
+        if (existing) return;
+
+        await adminDbRun(`INSERT INTO admins (username, password) VALUES (?, ?)`, [ADMIN_BOOTSTRAP_USERNAME, hashed]);
+        console.log(`🔐 Bootstrap admin created: ${ADMIN_BOOTSTRAP_USERNAME}`);
+    } catch (err) {
+        console.error('Failed to ensure bootstrap admin account:', err.message);
+    }
+}
+
+async function logAdminAccountSummary() {
+    try {
+        const rows = await adminDbAll(`SELECT username FROM admins ORDER BY id ASC LIMIT 20`);
+        const usernames = rows.map((row) => String(row.username || '').trim()).filter(Boolean);
+        if (!usernames.length) {
+            console.warn('⚠️ No admin accounts found in admin.db. Login will always fail until an admin account is created.');
+            return;
+        }
+        console.log(`👤 Admin accounts loaded: ${usernames.join(', ')}`);
+    } catch (err) {
+        console.error('Failed to read admin account summary:', err.message);
+    }
+}
+
 function syncValidCustomer(name, phone) {
     const safeName = String(name || '').trim();
     const safePhone = String(phone || '').trim();
@@ -1402,11 +1450,13 @@ app.post('/api/admin/login', async (req, res) => {
     try {
         const row = await adminDbGet("SELECT * FROM admins WHERE username = ?", [username]);
         if (!row) {
+            console.warn(`🔒 Admin login failed: username not found -> "${String(username || '').trim()}"`);
             return res.status(401).json({ error: 'Invalid username or password.' });
         }
 
         const isValid = await verifyAdminPassword(password, row.password);
         if (!isValid) {
+            console.warn(`🔒 Admin login failed: password mismatch for "${String(username || '').trim()}"`);
             return res.status(401).json({ error: 'Invalid username or password.' });
         }
 
