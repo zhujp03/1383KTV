@@ -21,6 +21,9 @@ try {
     }
 }
 
+const BUSINESS_TIME_ZONE = String(process.env.BUSINESS_TIME_ZONE || process.env.TZ || 'America/New_York').trim() || 'America/New_York';
+process.env.TZ = BUSINESS_TIME_ZONE;
+
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const BCRYPT_ROUNDS = 10;
@@ -111,6 +114,37 @@ function runAlterTableIgnoreDuplicate(dbConn, sql, label) {
         if (msg.includes('duplicate column name')) return;
         console.error(`Schema migration failed (${label}):`, err.message);
     });
+}
+
+function getDateTimePartsInTimeZone(date = new Date(), timeZone = BUSINESS_TIME_ZONE) {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+    });
+    const parts = formatter.formatToParts(date);
+    const bag = {};
+    for (const part of parts) {
+        if (part.type !== 'literal') {
+            bag[part.type] = part.value;
+        }
+    }
+    return bag;
+}
+
+function getBusinessDateYmd(date = new Date()) {
+    const parts = getDateTimePartsInTimeZone(date, BUSINESS_TIME_ZONE);
+    return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function getBusinessDateTimeYmdHms(date = new Date()) {
+    const parts = getDateTimePartsInTimeZone(date, BUSINESS_TIME_ZONE);
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
 }
 
 copySeedDatabaseIfNeeded('ktv_data.db', KTV_DB_PATH);
@@ -237,9 +271,15 @@ const historyDb = new sqlite3.Database(HISTORY_DB_PATH, (err) => {
             name TEXT NOT NULL,
             phone TEXT NOT NULL,
             deposit TEXT DEFAULT 'No',
+            final_total_amount REAL DEFAULT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`, (tableErr) => {
             if (tableErr) return;
+            runAlterTableIgnoreDuplicate(
+                historyDb,
+                `ALTER TABLE historical_orders ADD COLUMN final_total_amount REAL DEFAULT NULL`,
+                'historical_orders.final_total_amount'
+            );
 
             // Enforce historical_orders as deposit=Yes only; clear legacy No rows once at startup.
             historyDb.run(`DELETE FROM historical_orders WHERE LOWER(TRIM(COALESCE(deposit, ''))) != 'yes'`, () => {
@@ -278,9 +318,9 @@ const customerDb = new sqlite3.Database(CUSTOMER_DB_PATH, (err) => {
 
 // 自动清理过期预约的函数
 function cleanupOldBookings() {
-    // 删除所有 date 小于今天本地日期的记录
-    const sql = `DELETE FROM bookings WHERE date < date('now', 'localtime')`;
-    db.run(sql, function(err) {
+    const todayYmd = getBusinessDateYmd();
+    const sql = `DELETE FROM bookings WHERE date < ?`;
+    db.run(sql, [todayYmd], function(err) {
         if (err) console.error("Auto-cleanup failed:", err);
         else if (this.changes > 0) {
             console.log(`🧹 Auto-cleanup executed: Deleted ${this.changes} outdated bookings.`);
@@ -290,8 +330,11 @@ function cleanupOldBookings() {
 
 // 自动清理两个月前的历史订单
 function cleanupOldHistoricalOrders() {
-    const sql = `DELETE FROM historical_orders WHERE created_at < datetime('now', 'localtime', '-2 months')`;
-    historyDb.run(sql, function(err) {
+    const threshold = new Date();
+    threshold.setMonth(threshold.getMonth() - 2);
+    const thresholdYmdHms = getBusinessDateTimeYmdHms(threshold);
+    const sql = `DELETE FROM historical_orders WHERE created_at < ?`;
+    historyDb.run(sql, [thresholdYmdHms], function(err) {
         if (err) {
             console.error('History auto-cleanup failed:', err);
         } else if (this.changes > 0) {
@@ -901,11 +944,12 @@ function syncValidCustomer(name, phone) {
     const safePhone = String(phone || '').trim();
     if (!safeName || !safePhone) return;
 
-    const sql = `INSERT INTO valid_customers (name, phone)
-                 VALUES (?, ?)
+    const nowYmdHms = getBusinessDateTimeYmdHms();
+    const sql = `INSERT INTO valid_customers (name, phone, first_seen, last_seen)
+                 VALUES (?, ?, ?, ?)
                  ON CONFLICT(name, phone)
-                 DO UPDATE SET last_seen = CURRENT_TIMESTAMP`;
-    customerDb.run(sql, [safeName, safePhone], (err) => {
+                 DO UPDATE SET last_seen = ?`;
+    customerDb.run(sql, [safeName, safePhone, nowYmdHms, nowYmdHms, nowYmdHms], (err) => {
         if (err) console.error('Failed to sync valid customer:', err.message);
     });
 }
@@ -918,10 +962,11 @@ function updateValidCustomerFinalAmount(name, phone, finalTotalAmount) {
     const normalizedAmount = Number(finalTotalAmount);
     if (!Number.isFinite(normalizedAmount) || normalizedAmount < 0) return;
 
+    const nowYmdHms = getBusinessDateTimeYmdHms();
     const sql = `UPDATE valid_customers
-                 SET final_total_amount = ?, last_seen = CURRENT_TIMESTAMP
+                 SET final_total_amount = ?, last_seen = ?
                  WHERE name = ? AND phone = ?`;
-    customerDb.run(sql, [roundCurrency(normalizedAmount), safeName, safePhone], (err) => {
+    customerDb.run(sql, [roundCurrency(normalizedAmount), nowYmdHms, safeName, safePhone], (err) => {
         if (err) console.error('Failed to update valid customer amount:', err.message);
     });
 }
@@ -953,8 +998,8 @@ function syncHistoricalOrder(booking) {
         return;
     }
 
-    const sql = `INSERT INTO historical_orders (booking_id, room, partySize, date, time, duration, name, phone, deposit)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    const sql = `INSERT INTO historical_orders (booking_id, room, partySize, date, time, duration, name, phone, deposit, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON CONFLICT(booking_id)
                  DO UPDATE SET
                     room = excluded.room,
@@ -975,7 +1020,8 @@ function syncHistoricalOrder(booking) {
         booking.duration,
         booking.name,
         booking.phone,
-        normalizedDeposit
+        normalizedDeposit,
+        getBusinessDateTimeYmdHms()
     ], (err) => {
         if (err) console.error('Failed to sync historical order:', err.message);
     });
@@ -1000,6 +1046,7 @@ function checkAdminLogin(req, res, next) {
 
 app.get('/api/public/security-config', (req, res) => {
     res.status(200).json({
+        businessTimeZone: BUSINESS_TIME_ZONE,
         captchaEnabled: CAPTCHA_ENABLED,
         captchaProvider: CAPTCHA_ENABLED ? 'turnstile' : '',
         turnstileSiteKey: CAPTCHA_ENABLED ? TURNSTILE_SITE_KEY : '',
@@ -1035,8 +1082,8 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
         return res.status(phoneLimitResult.statusCode || 429).json({ error: phoneLimitResult.error });
     }
 
-    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '')`;
+    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?)`;
 
     try {
         const runResult = await dbRun(sql, [
@@ -1046,7 +1093,8 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             bookingData.time,
             bookingData.duration,
             bookingData.name,
-            bookingData.phone
+            bookingData.phone,
+            getBusinessDateTimeYmdHms()
         ]);
         const bookingId = runResult.lastID;
         syncValidCustomer(bookingData.name, bookingData.phone);
@@ -1442,10 +1490,8 @@ app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
 
 // 历史订单列表（最近两个月）
 app.get('/api/admin/history-orders', checkAdminLogin, (req, res) => {
-    const sql = `SELECT h.*, vc.final_total_amount
+    const sql = `SELECT h.*
                  FROM historical_orders h
-                 LEFT JOIN valid_customers vc
-                   ON vc.name = h.name AND vc.phone = h.phone
                  WHERE h.deposit = 'Yes'
                  ORDER BY h.created_at DESC, h.date DESC, h.time DESC`;
     historyDb.all(sql, [], (err, rows) => {
@@ -1476,13 +1522,65 @@ app.put('/api/admin/valid-customers/amount', checkAdminLogin, (req, res) => {
         return res.status(400).json({ error: 'Final total amount must be a valid non-negative number.' });
     }
 
+    const nowYmdHms = getBusinessDateTimeYmdHms();
     const sql = `UPDATE valid_customers
-                 SET final_total_amount = ?, last_seen = CURRENT_TIMESTAMP
+                 SET final_total_amount = ?, last_seen = ?
                  WHERE name = ? AND phone = ?`;
-    customerDb.run(sql, [roundCurrency(amount), safeName, safePhone], function(err) {
+    customerDb.run(sql, [roundCurrency(amount), nowYmdHms, safeName, safePhone], function(err) {
         if (err) return res.status(500).json({ error: 'Failed to update customer final total amount.' });
         if (!this.changes) return res.status(404).json({ error: 'Customer record not found.' });
         res.status(200).json({ message: 'Customer final total amount updated.' });
+    });
+});
+
+app.put('/api/admin/history-orders/amount', checkAdminLogin, (req, res) => {
+    const { bookingId, historyId, finalTotalAmount } = req.body || {};
+    const amount = Number(finalTotalAmount);
+    const safeBookingId = Number(bookingId);
+    const safeHistoryId = Number(historyId);
+
+    if (!Number.isFinite(amount) || amount < 0) {
+        return res.status(400).json({ error: 'Final total amount must be a valid non-negative number.' });
+    }
+
+    const roundedAmount = roundCurrency(amount);
+
+    if (Number.isFinite(safeBookingId) && safeBookingId > 0) {
+        const byBookingSql = `UPDATE historical_orders
+                              SET final_total_amount = ?
+                              WHERE booking_id = ?`;
+        return historyDb.run(byBookingSql, [roundedAmount, safeBookingId], function(err) {
+            if (err) return res.status(500).json({ error: 'Failed to update customer final total amount.' });
+            if (!this.changes) return res.status(404).json({ error: 'History record not found.' });
+            return res.status(200).json({ message: 'Customer final total amount updated.' });
+        });
+    }
+
+    if (Number.isFinite(safeHistoryId) && safeHistoryId > 0) {
+        const byHistorySql = `UPDATE historical_orders
+                              SET final_total_amount = ?
+                              WHERE id = ?`;
+        return historyDb.run(byHistorySql, [roundedAmount, safeHistoryId], function(err) {
+            if (err) return res.status(500).json({ error: 'Failed to update customer final total amount.' });
+            if (!this.changes) return res.status(404).json({ error: 'History record not found.' });
+            return res.status(200).json({ message: 'Customer final total amount updated.' });
+        });
+    }
+
+    return res.status(400).json({ error: 'bookingId or historyId is required.' });
+});
+
+app.delete('/api/admin/history-orders/:historyId', checkAdminLogin, (req, res) => {
+    const historyId = Number(req.params.historyId);
+    if (!Number.isFinite(historyId) || historyId <= 0) {
+        return res.status(400).json({ error: 'Invalid history record id.' });
+    }
+
+    const sql = `DELETE FROM historical_orders WHERE id = ?`;
+    historyDb.run(sql, [historyId], function(err) {
+        if (err) return res.status(500).json({ error: 'Failed to delete history record.' });
+        if (!this.changes) return res.status(404).json({ error: 'History record not found.' });
+        return res.status(200).json({ message: 'History record deleted successfully.' });
     });
 });
 
@@ -1536,8 +1634,8 @@ app.post('/api/admin/bookings/manual', checkAdminLogin, async (req, res) => {
 
         const sql = `INSERT INTO bookings (
                         room, partySize, date, time, duration, name, phone, deposit,
-                        payment_status, payment_method, payment_amount_cents, payment_reference
-                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                        payment_status, payment_method, payment_amount_cents, payment_reference, created_at
+                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
         const runResult = await dbRun(sql, [
             room,
@@ -1551,7 +1649,8 @@ app.post('/api/admin/bookings/manual', checkAdminLogin, async (req, res) => {
             paymentStatus,
             paymentMethod,
             amountCents,
-            ''
+            '',
+            getBusinessDateTimeYmdHms()
         ]);
 
         if (paymentStatus === 'paid') {
@@ -1683,6 +1782,7 @@ app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
 app.listen(PORT, () => {
     console.log(`🚀 Server is running on http://localhost:${PORT}`);
     console.log(`💾 DATABASE_DIR: ${DATABASE_DIR}`);
+    console.log(`🕒 BUSINESS_TIME_ZONE: ${BUSINESS_TIME_ZONE}`);
     console.log(`🛡️ CAPTCHA ${CAPTCHA_ENABLED ? 'enabled' : 'disabled'} (${CAPTCHA_PROVIDER})`);
     console.log(`📨 GoHighLevel workflow notification ${GHL_ENABLED ? 'enabled' : 'disabled'}`);
     console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? `enabled:${STRIPE_MODE}` : 'disabled'})`);

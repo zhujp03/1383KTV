@@ -78,7 +78,7 @@
         </div>
 
         <div class="section-header" style="margin-top: 50px;">
-            <h2>Valid Customers (Paid Booking History)</h2>
+            <h2>Valid Customers (Customer History)</h2>
             <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadHistoryOrders()">🔄 Refresh Customers</button>
         </div>
         <table class="admin-table">
@@ -295,6 +295,11 @@
     // ======================= 全局变量 (用于周历计算) =======================
     let allBookingsData = [];
     let currentWeekOffset = 0; // 0=本周，-1=上周，1=下周
+    const BUSINESS_TIME_ZONE = 'America/New_York';
+
+    function getBusinessNowDate() {
+        return new Date(new Date().toLocaleString('en-US', { timeZone: BUSINESS_TIME_ZONE }));
+    }
 
     // 页面加载时检查登录状态
     window.onload = () => {
@@ -455,9 +460,9 @@
                 const amountValue = order.final_total_amount === null || order.final_total_amount === undefined
                     ? ''
                     : Number(order.final_total_amount).toFixed(2);
-                const escapedName = String(order.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                const escapedPhone = String(order.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                 const inputId = `history-final-amount-${order.booking_id || index}-${encodeURIComponent(`${order.name}|${order.phone}`)}`;
+                const safeBookingId = Number(order.booking_id) || 0;
+                const safeHistoryId = Number(order.id) || 0;
 
                 tr.innerHTML = `
                     <td>#${order.booking_id || '-'}</td>
@@ -470,7 +475,10 @@
                     <td>${depositBadge}</td>
                     <td><input type="number" step="0.01" min="0" id="${inputId}" class="neon-input" value="${amountValue}" placeholder="0.00"></td>
                     <td>${order.created_at || '-'}</td>
-                    <td><button class="action-btn btn-primary" onclick="saveCustomerFinalAmount('${escapedName}', '${escapedPhone}', '${inputId}')">Save</button></td>
+                    <td>
+                        <button class="action-btn btn-primary" onclick="saveCustomerFinalAmount(${safeBookingId}, ${safeHistoryId}, '${inputId}')">Save</button>
+                        <button class="action-btn btn-danger" onclick="deleteHistoryOrder(${safeHistoryId}, ${safeBookingId})">Delete</button>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -515,7 +523,7 @@
         container.innerHTML = '';
 
         // 1. 计算当前视图的 7 天日期
-        const today = new Date();
+        const today = getBusinessNowDate();
         const currentDayOfWeek = today.getDay() || 7;
         const startOfWeek = new Date(today);
         startOfWeek.setDate(today.getDate() - currentDayOfWeek + 1 + (currentWeekOffset * 7));
@@ -567,7 +575,7 @@
             const header = document.createElement('div');
             header.className = 'uni-day-header';
 
-            if (dayInfo.dateStr === formatDateStr(new Date())) {
+            if (dayInfo.dateStr === formatDateStr(today)) {
                 header.style.borderTop = "3px solid var(--primary-blue)";
                 header.style.backgroundColor = "rgba(59, 130, 246, 0.1)";
             }
@@ -800,8 +808,8 @@
         }
     }
 
-    async function saveCustomerFinalAmount(name, phone, inputId) {
-        const resolvedInputId = inputId || `final-amount-${encodeURIComponent(`${name}|${phone}`)}`;
+    async function saveCustomerFinalAmount(bookingId, historyId, inputId) {
+        const resolvedInputId = inputId || `final-amount-${bookingId || historyId || 'unknown'}`;
         const amountInput = document.getElementById(resolvedInputId);
         if (!amountInput) return;
 
@@ -811,10 +819,10 @@
         }
 
         try {
-            const res = await fetch('/api/admin/valid-customers/amount', {
+            const res = await fetch('/api/admin/history-orders/amount', {
                 method: 'PUT',
                 headers: getAuthHeaders(),
-                body: JSON.stringify({ name, phone, finalTotalAmount })
+                body: JSON.stringify({ bookingId, historyId, finalTotalAmount })
             });
             const result = await res.json();
             if (!res.ok) {
@@ -825,6 +833,36 @@
         } catch (err) {
             console.error('Failed to update final amount:', err);
             alert('Network error while saving amount.');
+        }
+    }
+
+    async function deleteHistoryOrder(historyId, bookingId) {
+        const safeHistoryId = Number(historyId);
+        if (!Number.isFinite(safeHistoryId) || safeHistoryId <= 0) {
+            return alert('Invalid history record ID.');
+        }
+
+        const bookingLabel = Number.isFinite(Number(bookingId)) && Number(bookingId) > 0
+            ? `Booking #${bookingId}`
+            : `History #${safeHistoryId}`;
+
+        if (!confirm(`Delete ${bookingLabel} from customer history? This only removes the history record.`)) return;
+
+        try {
+            const res = await fetch(`/api/admin/history-orders/${safeHistoryId}`, {
+                method: 'DELETE',
+                headers: getAuthHeaders()
+            });
+            if (res.status === 401) return handleLogout();
+
+            const result = await res.json();
+            if (!res.ok) {
+                return alert(result.error || 'Failed to delete history record.');
+            }
+            loadHistoryOrders();
+        } catch (err) {
+            console.error('Failed to delete history record:', err);
+            alert('Network error while deleting history record.');
         }
     }
 

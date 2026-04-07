@@ -783,6 +783,7 @@
     let currentDayBookings = [];
     let modalCloseHandler = null;
     let securityConfig = {
+        businessTimeZone: 'America/New_York',
         captchaEnabled: false,
         captchaProvider: '',
         turnstileSiteKey: '',
@@ -821,12 +822,33 @@
         "large-room": "vip"
     };
 
+    function getBusinessTimeZone() {
+        return String(securityConfig.businessTimeZone || 'America/New_York').trim() || 'America/New_York';
+    }
+
+    function getBusinessTodayYmd() {
+        const formatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: getBusinessTimeZone(),
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        return formatter.format(new Date());
+    }
+
+    function getDayOfWeekFromYmd(dateYmd) {
+        const parts = String(dateYmd || '').split('-').map(Number);
+        if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return NaN;
+        const [year, month, day] = parts;
+        return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+    }
+
     window.onload = async function() {
-        const today = new Date().toISOString().split('T')[0];
+        await loadSecurityConfig();
+        const today = getBusinessTodayYmd();
         document.getElementById('booking-date').setAttribute('min', today);
         applyPreselectedRoomFromQuery();
         updateUpsellMentions();
-        await loadSecurityConfig();
         await handlePaymentReturnFromQuery();
     };
 
@@ -838,6 +860,7 @@
             const response = await fetch('/api/public/security-config');
             const config = await response.json();
             securityConfig = {
+                businessTimeZone: (config && config.businessTimeZone) || 'America/New_York',
                 captchaEnabled: Boolean(config && config.captchaEnabled),
                 captchaProvider: (config && config.captchaProvider) || '',
                 turnstileSiteKey: (config && config.turnstileSiteKey) || '',
@@ -846,6 +869,7 @@
         } catch (error) {
             console.error('Failed to load security config:', error);
             securityConfig = {
+                businessTimeZone: 'America/New_York',
                 captchaEnabled: false,
                 captchaProvider: '',
                 turnstileSiteKey: '',
@@ -855,6 +879,7 @@
 
         if (!securityConfig.captchaEnabled) {
             captchaSection.style.display = 'none';
+            updatePaymentProviderButtons();
             return;
         }
 
@@ -1249,9 +1274,7 @@
         if (!dateVal) return;
 
         // 判断选中的日期是星期几
-        const [year, month, day] = dateVal.split('-');
-        const selectedDate = new Date(year, month - 1, day);
-        const dayOfWeek = selectedDate.getDay(); // 0是周日，5是周五，6是周六
+        const dayOfWeek = getDayOfWeekFromYmd(dateVal); // 0是周日，5是周五，6是周六
 
         // 清空原有的下拉选项
         durationSelect.innerHTML = '<option value="" disabled selected>How long will you stay?</option>';
@@ -1332,9 +1355,7 @@
         const container = document.getElementById('dynamic-time-container');
         container.innerHTML = '';
 
-        const [year, month, day] = bookingData.date.split('-');
-        const selectedDate = new Date(year, month - 1, day);
-        const dayOfWeek = selectedDate.getDay();
+        const dayOfWeek = getDayOfWeekFromYmd(bookingData.date);
 
         let allTimeSlots = [];
 
