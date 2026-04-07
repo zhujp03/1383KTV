@@ -78,8 +78,8 @@
         </div>
 
         <div class="section-header" style="margin-top: 50px;">
-            <h2>Historical Orders (Last 2 Months)</h2>
-            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadHistoryOrders()">🔄 Refresh History</button>
+            <h2>Valid Customers (Paid Booking History)</h2>
+            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadHistoryOrders()">🔄 Refresh Customers</button>
         </div>
         <table class="admin-table">
             <thead>
@@ -92,29 +92,12 @@
                 <th>Name</th>
                 <th>Phone</th>
                 <th>Deposit</th>
-                <th>Created At</th>
-            </tr>
-            </thead>
-            <tbody id="history-orders-body">
-            </tbody>
-        </table>
-
-        <div class="section-header" style="margin-top: 50px;">
-            <h2>Valid Customers (Name + Phone)</h2>
-            <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadValidCustomers()">🔄 Refresh Customers</button>
-        </div>
-        <table class="admin-table">
-            <thead>
-            <tr>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>First Seen</th>
-                <th>Last Seen</th>
                 <th>Final Total Amount</th>
+                <th>Created At</th>
                 <th>Actions</th>
             </tr>
             </thead>
-            <tbody id="valid-customers-body">
+            <tbody id="history-orders-body">
             </tbody>
         </table>
     </section>
@@ -366,7 +349,6 @@
         document.getElementById('welcome-msg').innerText = `Welcome, ${username}`;
         loadBookings();
         loadHistoryOrders();
-        loadValidCustomers();
     }
 
     function switchTab(tabName) {
@@ -397,7 +379,6 @@
                 allBookingsData = [];
                 renderWeeklyTimetable(); // 清空并渲染空的周历
                 loadHistoryOrders();
-                loadValidCustomers();
                 return;
             }
 
@@ -440,7 +421,6 @@
             // 2. 渲染可视化周历
             renderWeeklyTimetable();
             loadHistoryOrders();
-            loadValidCustomers();
 
         } catch (err) {
             tbody.innerHTML = '<tr><td colspan="9" style="color: red;">Failed to load data.</td></tr>';
@@ -451,7 +431,7 @@
     async function loadHistoryOrders() {
         const tbody = document.getElementById('history-orders-body');
         if (!tbody) return;
-        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>';
 
         try {
             const res = await fetch('/api/admin/history-orders', { headers: getAuthHeaders() });
@@ -461,17 +441,23 @@
             if (!res.ok) throw new Error(result.error || 'Failed to load history orders');
 
             if (!result.data || result.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: var(--text-muted);">No historical orders in the last 2 months.</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; color: var(--text-muted);">No paid customer records in the last 2 months.</td></tr>';
                 return;
             }
 
             tbody.innerHTML = '';
-            result.data.forEach(order => {
+            result.data.forEach((order, index) => {
                 const tr = document.createElement('tr');
                 const isPaid = String(order.deposit || '').toLowerCase() === 'yes';
                 const depositBadge = isPaid
                     ? '<span style="background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">Paid</span>'
                     : '<span style="background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">No</span>';
+                const amountValue = order.final_total_amount === null || order.final_total_amount === undefined
+                    ? ''
+                    : Number(order.final_total_amount).toFixed(2);
+                const escapedName = String(order.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const escapedPhone = String(order.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const inputId = `history-final-amount-${order.booking_id || index}-${encodeURIComponent(`${order.name}|${order.phone}`)}`;
 
                 tr.innerHTML = `
                     <td>#${order.booking_id || '-'}</td>
@@ -482,55 +468,15 @@
                     <td>${order.name}</td>
                     <td>${order.phone}</td>
                     <td>${depositBadge}</td>
+                    <td><input type="number" step="0.01" min="0" id="${inputId}" class="neon-input" value="${amountValue}" placeholder="0.00"></td>
                     <td>${order.created_at || '-'}</td>
+                    <td><button class="action-btn btn-primary" onclick="saveCustomerFinalAmount('${escapedName}', '${escapedPhone}', '${inputId}')">Save</button></td>
                 `;
                 tbody.appendChild(tr);
             });
         } catch (err) {
             console.error('Failed to load history orders:', err);
-            tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color: red;">Failed to load historical orders.</td></tr>';
-        }
-    }
-
-    async function loadValidCustomers() {
-        const tbody = document.getElementById('valid-customers-body');
-        if (!tbody) return;
-        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-muted);">Loading...</td></tr>';
-
-        try {
-            const res = await fetch('/api/admin/valid-customers', { headers: getAuthHeaders() });
-            if (res.status === 401) return handleLogout();
-
-            const result = await res.json();
-            if (!res.ok) throw new Error(result.error || 'Failed to load valid customers');
-
-            if (!result.data || result.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: var(--text-muted);">No valid customers found.</td></tr>';
-                return;
-            }
-
-            tbody.innerHTML = '';
-            result.data.forEach(customer => {
-                const tr = document.createElement('tr');
-                const amountValue = customer.final_total_amount === null || customer.final_total_amount === undefined
-                    ? ''
-                    : Number(customer.final_total_amount).toFixed(2);
-                const escapedName = String(customer.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                const escapedPhone = String(customer.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-                const inputId = `final-amount-${encodeURIComponent(`${customer.name}|${customer.phone}`)}`;
-                tr.innerHTML = `
-                    <td>${customer.name}</td>
-                    <td>${customer.phone}</td>
-                    <td>${customer.first_seen || '-'}</td>
-                    <td>${customer.last_seen || '-'}</td>
-                    <td><input type="number" step="0.01" min="0" id="${inputId}" class="neon-input" value="${amountValue}" placeholder="0.00"></td>
-                    <td><button class="action-btn btn-primary" onclick="saveCustomerFinalAmount('${escapedName}', '${escapedPhone}')">Save</button></td>
-                `;
-                tbody.appendChild(tr);
-            });
-        } catch (err) {
-            console.error('Failed to load valid customers:', err);
-            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color: red;">Failed to load valid customers.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="11" style="text-align:center; color: red;">Failed to load customer history.</td></tr>';
         }
     }
 
@@ -854,9 +800,9 @@
         }
     }
 
-    async function saveCustomerFinalAmount(name, phone) {
-        const inputId = `final-amount-${encodeURIComponent(`${name}|${phone}`)}`;
-        const amountInput = document.getElementById(inputId);
+    async function saveCustomerFinalAmount(name, phone, inputId) {
+        const resolvedInputId = inputId || `final-amount-${encodeURIComponent(`${name}|${phone}`)}`;
+        const amountInput = document.getElementById(resolvedInputId);
         if (!amountInput) return;
 
         const finalTotalAmount = Number(amountInput.value);
@@ -875,7 +821,7 @@
                 return alert(result.error || 'Failed to save amount.');
             }
             alert('Final total amount updated.');
-            loadValidCustomers();
+            loadHistoryOrders();
         } catch (err) {
             console.error('Failed to update final amount:', err);
             alert('Network error while saving amount.');

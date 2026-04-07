@@ -508,6 +508,7 @@
     <div id="step-1" class="step-content">
         <h2 class="step-title">Choose Your Room</h2>
         <p class="step-subtitle">Pick your room first, then build the perfect night.</p>
+        <p>Note: For all online bookings, deposit fees are non-refundable.</p>
 
         <div class="rooms-grid">
             <div class="room-card" data-room-key="small" data-room-name="Small Room" onclick="selectRoom('Small Room', this)">
@@ -743,10 +744,6 @@
                     <div class="upsell-label"><span>💳 Stripe (Card)</span></div>
                     <p class="upsell-desc" id="stripe-status-text">Secure card checkout.</p>
                 </button>
-                <button type="button" class="upsell-card" id="pay-with-paypal-btn" onclick="startPayment('paypal')">
-                    <div class="upsell-label"><span>🅿️ PayPal</span></div>
-                    <p class="upsell-desc" id="paypal-status-text">Pay via your PayPal account.</p>
-                </button>
             </div>
             <p class="upsell-hint" id="payment-step-hint">After payment succeeds, we will mark your booking as paid automatically.</p>
         </div>
@@ -792,8 +789,7 @@
         payment: {
             currency: 'CAD',
             providers: {
-                stripe: { enabled: false, publishableKey: '' },
-                paypal: { enabled: false, env: 'sandbox' }
+                stripe: { enabled: false, publishableKey: '' }
             }
         }
     };
@@ -915,20 +911,13 @@
 
     function updatePaymentProviderButtons() {
         const stripeCfg = getPaymentProviderConfig('stripe');
-        const paypalCfg = getPaymentProviderConfig('paypal');
         const stripeBtn = document.getElementById('pay-with-stripe-btn');
-        const paypalBtn = document.getElementById('pay-with-paypal-btn');
         const stripeText = document.getElementById('stripe-status-text');
-        const paypalText = document.getElementById('paypal-status-text');
 
         if (stripeBtn) stripeBtn.disabled = !stripeCfg.enabled;
-        if (paypalBtn) paypalBtn.disabled = !paypalCfg.enabled;
         if (stripeText) stripeText.textContent = stripeCfg.enabled
             ? 'Secure card checkout via Stripe.'
             : 'Stripe is not configured yet.';
-        if (paypalText) paypalText.textContent = paypalCfg.enabled
-            ? `PayPal checkout (${paypalCfg.env || 'sandbox'} mode).`
-            : 'PayPal is not configured yet.';
     }
 
     function formatMoney(amount, currency = 'CAD') {
@@ -997,7 +986,7 @@
         paymentActionInProgress = true;
         const hintNode = document.getElementById('payment-step-hint');
         if (hintNode) {
-            hintNode.textContent = provider === 'stripe' ? 'Redirecting to Stripe checkout...' : 'Redirecting to PayPal...';
+            hintNode.textContent = 'Redirecting to Stripe checkout...';
         }
 
         try {
@@ -1041,13 +1030,45 @@
         const paymentState = (params.get('payment') || '').trim().toLowerCase();
         const provider = (params.get('provider') || '').trim().toLowerCase();
         const bookingId = Number(params.get('bookingId') || 0);
+        const cancelToken = (params.get('cancelToken') || '').trim();
         if (!paymentState || !provider || !Number.isFinite(bookingId) || bookingId <= 0) return;
 
         if (paymentState === 'cancel') {
-            bookingData.bookingId = bookingId;
-            goToStep(5);
-            await refreshPaymentQuote();
-            openAppModal('Payment was not completed. You can retry from Step 5.', { title: 'Payment Cancelled' });
+            try {
+                const response = await fetch(`/api/book/${bookingId}/payment/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        provider,
+                        cancelToken
+                    })
+                });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    openAppModal(
+                        result.error || 'Payment was cancelled, but auto-release failed. Please contact admin to remove unpaid booking.',
+                        { title: 'Payment Cancelled' }
+                    );
+                    bookingData.bookingId = bookingId;
+                    goToStep(5);
+                } else {
+                    bookingData.bookingId = null;
+                    bookingData.paymentStatus = 'unpaid';
+                    goToStep(4);
+                    openAppModal('Payment was cancelled and this unpaid reservation has been automatically released.', {
+                        title: 'Reservation Released'
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to auto-cancel booking after payment cancellation:', error);
+                openAppModal(
+                    'Payment was cancelled, but auto-release failed due to network issue. Please contact admin to remove unpaid booking.',
+                    { title: 'Payment Cancelled' }
+                );
+                bookingData.bookingId = bookingId;
+                goToStep(5);
+            }
             window.history.replaceState({}, document.title, window.location.pathname);
             return;
         }
@@ -1055,7 +1076,6 @@
         if (paymentState !== 'success') return;
 
         const stripeSessionId = params.get('session_id') || '';
-        const paypalOrderId = params.get('token') || params.get('order_id') || '';
 
         bookingData.bookingId = bookingId;
         goToStep(5);
@@ -1066,8 +1086,7 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     provider,
-                    sessionId: stripeSessionId,
-                    orderId: paypalOrderId
+                    sessionId: stripeSessionId
                 })
             });
             const result = await response.json();
@@ -1319,7 +1338,7 @@
 
         let allTimeSlots = [];
 
-        if (dayOfWeek === 0 || dayOfWeek === 6) {
+        if (dayOfWeek === 5 || dayOfWeek === 6) {
             allTimeSlots = [
                 "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
                 "17:00", "17:30", "18:00", "18:30", "19:00", "19:30",

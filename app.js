@@ -4,6 +4,7 @@ const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const rateLimit = require('express-rate-limit');
 const Stripe = require('stripe');
@@ -87,14 +88,6 @@ const STRIPE_CONFIG_ISSUES = [
     HAS_STRIPE_PUBLISHABLE_KEY ? '' : 'missing STRIPE_PUBLISHABLE_KEY'
 ].filter(Boolean);
 const stripeClient = STRIPE_ENABLED ? new Stripe(STRIPE_SECRET_KEY) : null;
-
-const PAYPAL_CLIENT_ID = String(process.env.PAYPAL_CLIENT_ID || '').trim();
-const PAYPAL_CLIENT_SECRET = String(process.env.PAYPAL_CLIENT_SECRET || '').trim();
-const PAYPAL_ENV = String(process.env.PAYPAL_ENV || 'sandbox').trim().toLowerCase();
-const PAYPAL_ENABLED = Boolean(PAYPAL_CLIENT_ID && PAYPAL_CLIENT_SECRET);
-const PAYPAL_API_BASE = PAYPAL_ENV === 'live'
-    ? 'https://api-m.paypal.com'
-    : 'https://api-m.sandbox.paypal.com';
 
 const ipLastRequestAt = new Map();
 const phoneRequestState = new Map();
@@ -199,6 +192,7 @@ const db = new sqlite3.Database(KTV_DB_PATH, (err) => {
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_method TEXT DEFAULT ''`, 'bookings.payment_method');
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_amount_cents INTEGER DEFAULT 0`, 'bookings.payment_amount_cents');
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_reference TEXT DEFAULT ''`, 'bookings.payment_reference');
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_cancel_token TEXT DEFAULT ''`, 'bookings.payment_cancel_token');
         });
     }
 });
@@ -551,6 +545,10 @@ function calculateBookingPaymentQuote(booking) {
     };
 }
 
+function generatePaymentCancelToken() {
+    return crypto.randomBytes(24).toString('hex');
+}
+
 function isLocalHostname(hostname) {
     const host = String(hostname || '').trim().toLowerCase();
     return host === 'localhost' || host === '127.0.0.1' || host === '::1';
@@ -581,86 +579,13 @@ function getPublicBaseUrl(req) {
     return `${proto}://${host}`;
 }
 
-async function getPayPalAccessToken() {
-    const auth = Buffer.from(`${PAYPAL_CLIENT_ID}:${PAYPAL_CLIENT_SECRET}`).toString('base64');
-    const body = new URLSearchParams({ grant_type: 'client_credentials' }).toString();
-    const response = await fetchWithTimeout(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
-        method: 'POST',
-        headers: {
-            Authorization: `Basic ${auth}`,
-            'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body
-    });
-    const payload = await safeReadJson(response);
-    if (!response.ok || !payload.access_token) {
-        throw new Error(`PayPal token failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
-    }
-    return payload.access_token;
-}
-
-async function createPayPalOrder({ booking, quote, returnUrl, cancelUrl }) {
-    const accessToken = await getPayPalAccessToken();
-    const response = await fetchWithTimeout(`${PAYPAL_API_BASE}/v2/checkout/orders`, {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            intent: 'CAPTURE',
-            purchase_units: [
-                {
-                    custom_id: String(booking.id),
-                    invoice_id: `ktv-${booking.id}-${Date.now()}`,
-                    description: quote.description,
-                    amount: {
-                        currency_code: quote.currency,
-                        value: quote.total.toFixed(2)
-                    }
-                }
-            ],
-            application_context: {
-                return_url: returnUrl,
-                cancel_url: cancelUrl
-            }
-        })
-    });
-
-    const payload = await safeReadJson(response);
-    if (!response.ok) {
-        throw new Error(`PayPal create order failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
-    }
-
-    const approveLink = (payload.links || []).find((link) => link.rel === 'approve')?.href || '';
-    return {
-        orderId: payload.id,
-        approveUrl: approveLink
-    };
-}
-
-async function capturePayPalOrder(orderId) {
-    const accessToken = await getPayPalAccessToken();
-    const response = await fetchWithTimeout(`${PAYPAL_API_BASE}/v2/checkout/orders/${encodeURIComponent(orderId)}/capture`, {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-        }
-    });
-    const payload = await safeReadJson(response);
-    if (!response.ok) {
-        throw new Error(`PayPal capture failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
-    }
-    return payload;
-}
-
 async function markBookingAsPaid({ booking, method, reference, totalCents }) {
     const sql = `UPDATE bookings
                  SET payment_status = 'paid',
                      payment_method = ?,
                      payment_reference = ?,
                      payment_amount_cents = ?,
+                     payment_cancel_token = '',
                      deposit = 'Yes'
                  WHERE id = ?`;
     await dbRun(sql, [String(method || ''), String(reference || ''), Number(totalCents || 0), Number(booking.id)]);
@@ -1086,8 +1011,7 @@ app.get('/api/public/security-config', (req, res) => {
                     mode: STRIPE_MODE,
                     configIssue: STRIPE_CONFIG_ISSUES.join(', '),
                     publishableKey: STRIPE_ENABLED ? STRIPE_PUBLISHABLE_KEY : ''
-                },
-                paypal: { enabled: PAYPAL_ENABLED, env: PAYPAL_ENV }
+                }
             }
         }
     });
@@ -1163,8 +1087,7 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             paymentStatus: 'unpaid',
             paymentQuote,
             paymentProviders: {
-                stripe: STRIPE_ENABLED,
-                paypal: PAYPAL_ENABLED
+                stripe: STRIPE_ENABLED
             }
         });
     } catch (err) {
@@ -1191,8 +1114,7 @@ app.get('/api/book/:id/payment-quote', async (req, res) => {
             paymentStatus: normalizePaymentStatus(booking.payment_status),
             paymentQuote,
             paymentProviders: {
-                stripe: STRIPE_ENABLED,
-                paypal: PAYPAL_ENABLED
+                stripe: STRIPE_ENABLED
             }
         });
     } catch (err) {
@@ -1210,8 +1132,8 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         if (!Number.isFinite(bookingId) || bookingId <= 0) {
             return res.status(400).json({ error: 'Invalid booking id.' });
         }
-        if (!['stripe', 'paypal'].includes(provider)) {
-            return res.status(400).json({ error: 'Unsupported payment provider.' });
+        if (provider !== 'stripe') {
+            return res.status(400).json({ error: 'Unsupported payment provider. Only Stripe is available.' });
         }
         if (!phoneCandidates.length) {
             return res.status(400).json({ error: 'Invalid phone number.' });
@@ -1242,63 +1164,85 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         if (!baseUrl) {
             return res.status(500).json({ error: 'Unable to resolve public URL for payment redirect.' });
         }
+        const cancelToken = generatePaymentCancelToken();
+        await dbRun(`UPDATE bookings SET payment_cancel_token = ? WHERE id = ?`, [cancelToken, booking.id]);
 
-        if (provider === 'stripe') {
-            if (!STRIPE_ENABLED || !stripeClient) {
-                return res.status(400).json({ error: 'Stripe is not configured yet.' });
-            }
+        if (!STRIPE_ENABLED || !stripeClient) {
+            return res.status(400).json({ error: 'Stripe is not configured yet.' });
+        }
 
-            const session = await stripeClient.checkout.sessions.create({
-                mode: 'payment',
-                payment_method_types: ['card'],
-                line_items: [
-                    {
-                        quantity: 1,
-                        price_data: {
-                            currency: quote.currency.toLowerCase(),
-                            unit_amount: quote.totalCents,
-                            product_data: {
-                                name: quote.description
-                            }
+        const session = await stripeClient.checkout.sessions.create({
+            mode: 'payment',
+            payment_method_types: ['card'],
+            line_items: [
+                {
+                    quantity: 1,
+                    price_data: {
+                        currency: quote.currency.toLowerCase(),
+                        unit_amount: quote.totalCents,
+                        product_data: {
+                            name: quote.description
                         }
                     }
-                ],
-                metadata: {
-                    bookingId: String(booking.id),
-                    provider: 'stripe'
-                },
-                success_url: `${baseUrl}/pages/booking.html?payment=success&provider=stripe&bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
-                cancel_url: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}`
-            });
-
-            return res.status(200).json({
-                provider: 'stripe',
-                checkoutUrl: session.url,
-                sessionId: session.id,
-                paymentQuote: quote
-            });
-        }
-
-        if (!PAYPAL_ENABLED) {
-            return res.status(400).json({ error: 'PayPal is not configured yet.' });
-        }
-
-        const paypalOrder = await createPayPalOrder({
-            booking,
-            quote,
-            returnUrl: `${baseUrl}/pages/booking.html?payment=success&provider=paypal&bookingId=${booking.id}`,
-            cancelUrl: `${baseUrl}/pages/booking.html?payment=cancel&provider=paypal&bookingId=${booking.id}`
+                }
+            ],
+            metadata: {
+                bookingId: String(booking.id),
+                provider: 'stripe'
+            },
+            success_url: `${baseUrl}/pages/booking.html?payment=success&provider=stripe&bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}&cancelToken=${encodeURIComponent(cancelToken)}`
         });
 
         return res.status(200).json({
-            provider: 'paypal',
-            checkoutUrl: paypalOrder.approveUrl,
-            orderId: paypalOrder.orderId,
+            provider: 'stripe',
+            checkoutUrl: session.url,
+            sessionId: session.id,
             paymentQuote: quote
         });
     } catch (err) {
         console.error('Failed to start payment:', err.message);
         return res.status(500).json({ error: 'Failed to start payment.' });
+    }
+});
+
+app.post('/api/book/:id/payment/cancel', async (req, res) => {
+    try {
+        const bookingId = Number(req.params.id);
+        const provider = String(req.body?.provider || '').trim().toLowerCase();
+        const cancelToken = String(req.body?.cancelToken || req.query?.cancelToken || '').trim();
+
+        if (!Number.isFinite(bookingId) || bookingId <= 0) {
+            return res.status(400).json({ error: 'Invalid booking id.' });
+        }
+        if (provider !== 'stripe') {
+            return res.status(400).json({ error: 'Unsupported payment provider. Only Stripe is available.' });
+        }
+        if (!cancelToken) {
+            return res.status(400).json({ error: 'Missing cancel token.' });
+        }
+
+        const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
+        if (!booking) {
+            return res.status(404).json({ error: 'Booking not found.' });
+        }
+        if (normalizePaymentStatus(booking.payment_status) === 'paid') {
+            return res.status(409).json({ error: 'Booking is already paid and cannot be auto-cancelled.' });
+        }
+
+        const storedToken = String(booking.payment_cancel_token || '').trim();
+        if (!storedToken || storedToken !== cancelToken) {
+            return res.status(403).json({ error: 'Invalid cancel token for this booking.' });
+        }
+
+        await dbRun(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
+        return res.status(200).json({
+            message: 'Booking deleted after payment cancellation.',
+            bookingId
+        });
+    } catch (err) {
+        console.error('Failed to auto-cancel unpaid booking:', err.message);
+        return res.status(500).json({ error: 'Failed to auto-cancel booking.' });
     }
 });
 
@@ -1309,8 +1253,8 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
         if (!Number.isFinite(bookingId) || bookingId <= 0) {
             return res.status(400).json({ error: 'Invalid booking id.' });
         }
-        if (!['stripe', 'paypal'].includes(provider)) {
-            return res.status(400).json({ error: 'Unsupported payment provider.' });
+        if (provider !== 'stripe') {
+            return res.status(400).json({ error: 'Unsupported payment provider. Only Stripe is available.' });
         }
 
         const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
@@ -1327,54 +1271,27 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
 
         const quote = calculateBookingPaymentQuote(booking);
 
-        if (provider === 'stripe') {
-            if (!STRIPE_ENABLED || !stripeClient) {
-                return res.status(400).json({ error: 'Stripe is not configured yet.' });
-            }
-            const sessionId = String(req.body?.sessionId || req.body?.stripeSessionId || '').trim();
-            if (!sessionId) {
-                return res.status(400).json({ error: 'Missing Stripe session id.' });
-            }
-
-            const session = await stripeClient.checkout.sessions.retrieve(sessionId);
-            const paid = String(session.payment_status || '').toLowerCase() === 'paid';
-            const metaBookingId = Number(session.metadata?.bookingId || 0);
-            if (!paid || metaBookingId !== booking.id) {
-                return res.status(400).json({ error: 'Stripe payment is not completed or does not match booking.' });
-            }
-
-            await markBookingAsPaid({
-                booking,
-                method: 'stripe',
-                reference: session.id,
-                totalCents: quote.totalCents
-            });
-        } else {
-            if (!PAYPAL_ENABLED) {
-                return res.status(400).json({ error: 'PayPal is not configured yet.' });
-            }
-            const orderId = String(req.body?.orderId || req.body?.paypalOrderId || req.query?.token || '').trim();
-            if (!orderId) {
-                return res.status(400).json({ error: 'Missing PayPal order id.' });
-            }
-
-            const capture = await capturePayPalOrder(orderId);
-            const completed = String(capture.status || '').toUpperCase() === 'COMPLETED';
-            const customBookingId = Number(capture.purchase_units?.[0]?.payments?.captures?.[0]?.custom_id
-                || capture.purchase_units?.[0]?.custom_id
-                || 0);
-            if (!completed || customBookingId !== booking.id) {
-                return res.status(400).json({ error: 'PayPal payment is not completed or does not match booking.' });
-            }
-
-            const captureId = capture.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderId;
-            await markBookingAsPaid({
-                booking,
-                method: 'paypal',
-                reference: captureId,
-                totalCents: quote.totalCents
-            });
+        if (!STRIPE_ENABLED || !stripeClient) {
+            return res.status(400).json({ error: 'Stripe is not configured yet.' });
         }
+        const sessionId = String(req.body?.sessionId || req.body?.stripeSessionId || '').trim();
+        if (!sessionId) {
+            return res.status(400).json({ error: 'Missing Stripe session id.' });
+        }
+
+        const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+        const paid = String(session.payment_status || '').toLowerCase() === 'paid';
+        const metaBookingId = Number(session.metadata?.bookingId || 0);
+        if (!paid || metaBookingId !== booking.id) {
+            return res.status(400).json({ error: 'Stripe payment is not completed or does not match booking.' });
+        }
+
+        await markBookingAsPaid({
+            booking,
+            method: 'stripe',
+            reference: session.id,
+            totalCents: quote.totalCents
+        });
 
         let paymentNotification = { sent: false, reason: '' };
         try {
@@ -1525,7 +1442,12 @@ app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
 
 // 历史订单列表（最近两个月）
 app.get('/api/admin/history-orders', checkAdminLogin, (req, res) => {
-    const sql = `SELECT * FROM historical_orders WHERE deposit = 'Yes' ORDER BY created_at DESC, date DESC, time DESC`;
+    const sql = `SELECT h.*, vc.final_total_amount
+                 FROM historical_orders h
+                 LEFT JOIN valid_customers vc
+                   ON vc.name = h.name AND vc.phone = h.phone
+                 WHERE h.deposit = 'Yes'
+                 ORDER BY h.created_at DESC, h.date DESC, h.time DESC`;
     historyDb.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Failed to fetch historical orders.' });
         res.status(200).json({ total: rows.length, data: rows });
@@ -1763,7 +1685,7 @@ app.listen(PORT, () => {
     console.log(`💾 DATABASE_DIR: ${DATABASE_DIR}`);
     console.log(`🛡️ CAPTCHA ${CAPTCHA_ENABLED ? 'enabled' : 'disabled'} (${CAPTCHA_PROVIDER})`);
     console.log(`📨 GoHighLevel workflow notification ${GHL_ENABLED ? 'enabled' : 'disabled'}`);
-    console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? `enabled:${STRIPE_MODE}` : 'disabled'}) / PayPal(${PAYPAL_ENABLED ? 'enabled' : 'disabled'})`);
+    console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? `enabled:${STRIPE_MODE}` : 'disabled'})`);
     if (!STRIPE_ENABLED && STRIPE_CONFIG_ISSUES.length) {
         console.warn(`⚠️ Stripe config issue: ${STRIPE_CONFIG_ISSUES.join(', ')}`);
     }
