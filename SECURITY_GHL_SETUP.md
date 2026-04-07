@@ -21,11 +21,12 @@ Use `.env.example` as template and set these values in your hosting environment:
 - `GHL_PAYMENT_WORKFLOW_ID` (optional)
 - `TRUST_PROXY_HOPS=1` (or higher if multiple trusted proxies)
 - `DATABASE_DIR=database` (default). For Render disk, use `/data/database`.
-- `PUBLIC_BASE_URL=https://your-service-domain`
+- `PUBLIC_BASE_URL=https://your-service-domain` (optional; leave empty to auto-detect host)
 - Optional recovery: `ADMIN_BOOTSTRAP_USERNAME`, `ADMIN_BOOTSTRAP_PASSWORD`, `ADMIN_BOOTSTRAP_FORCE_RESET=true`
 
 For payment providers:
-- Stripe: `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`
+- Stripe: `STRIPE_PUBLISHABLE_KEY`, `STRIPE_SECRET_KEY`  
+  Use `pk_test/sk_test` in test env (no real charge), `pk_live/sk_live` in production.
 - PayPal: `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_ENV=sandbox|live`
 
 If GHL vars are not complete, booking still succeeds but notification is skipped.

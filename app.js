@@ -74,7 +74,18 @@ const ROOM_FIRST_HOUR_PRICE = {
 
 const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || '').trim();
 const STRIPE_PUBLISHABLE_KEY = String(process.env.STRIPE_PUBLISHABLE_KEY || '').trim();
-const STRIPE_ENABLED = Boolean(STRIPE_SECRET_KEY && STRIPE_PUBLISHABLE_KEY);
+const HAS_STRIPE_SECRET_KEY = Boolean(STRIPE_SECRET_KEY);
+const HAS_STRIPE_PUBLISHABLE_KEY = Boolean(STRIPE_PUBLISHABLE_KEY);
+const STRIPE_ENABLED = HAS_STRIPE_SECRET_KEY && HAS_STRIPE_PUBLISHABLE_KEY;
+const STRIPE_MODE = STRIPE_ENABLED
+    ? (STRIPE_SECRET_KEY.startsWith('sk_test_') ? 'test'
+        : STRIPE_SECRET_KEY.startsWith('sk_live_') ? 'live'
+        : 'unknown')
+    : 'disabled';
+const STRIPE_CONFIG_ISSUES = [
+    HAS_STRIPE_SECRET_KEY ? '' : 'missing STRIPE_SECRET_KEY',
+    HAS_STRIPE_PUBLISHABLE_KEY ? '' : 'missing STRIPE_PUBLISHABLE_KEY'
+].filter(Boolean);
 const stripeClient = STRIPE_ENABLED ? new Stripe(STRIPE_SECRET_KEY) : null;
 
 const PAYPAL_CLIENT_ID = String(process.env.PAYPAL_CLIENT_ID || '').trim();
@@ -540,11 +551,32 @@ function calculateBookingPaymentQuote(booking) {
     };
 }
 
+function isLocalHostname(hostname) {
+    const host = String(hostname || '').trim().toLowerCase();
+    return host === 'localhost' || host === '127.0.0.1' || host === '::1';
+}
+
 function getPublicBaseUrl(req) {
     const explicit = String(process.env.PUBLIC_BASE_URL || '').trim();
-    if (explicit) return explicit.replace(/\/+$/, '');
     const proto = String(req.headers['x-forwarded-proto'] || req.protocol || 'https').split(',')[0].trim();
     const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+
+    if (explicit) {
+        try {
+            const explicitUrl = new URL(explicit);
+            const explicitHost = String(explicitUrl.hostname || '').trim();
+            const requestHostOnly = String(host || '').split(':')[0].trim();
+            if (explicitHost && requestHostOnly && isLocalHostname(explicitHost) && !isLocalHostname(requestHostOnly)) {
+                console.warn(
+                    `⚠️ Ignoring PUBLIC_BASE_URL='${explicit}' for this request host '${host}'. Falling back to request host.`
+                );
+            } else {
+                return explicit.replace(/\/+$/, '');
+            }
+        } catch (_err) {
+            console.warn(`⚠️ Invalid PUBLIC_BASE_URL='${explicit}', falling back to request host.`);
+        }
+    }
     if (!host) return '';
     return `${proto}://${host}`;
 }
@@ -1049,7 +1081,12 @@ app.get('/api/public/security-config', (req, res) => {
         payment: {
             currency: PAYMENT_CURRENCY,
             providers: {
-                stripe: { enabled: STRIPE_ENABLED, publishableKey: STRIPE_ENABLED ? STRIPE_PUBLISHABLE_KEY : '' },
+                stripe: {
+                    enabled: STRIPE_ENABLED,
+                    mode: STRIPE_MODE,
+                    configIssue: STRIPE_CONFIG_ISSUES.join(', '),
+                    publishableKey: STRIPE_ENABLED ? STRIPE_PUBLISHABLE_KEY : ''
+                },
                 paypal: { enabled: PAYPAL_ENABLED, env: PAYPAL_ENV }
             }
         }
@@ -1726,5 +1763,8 @@ app.listen(PORT, () => {
     console.log(`💾 DATABASE_DIR: ${DATABASE_DIR}`);
     console.log(`🛡️ CAPTCHA ${CAPTCHA_ENABLED ? 'enabled' : 'disabled'} (${CAPTCHA_PROVIDER})`);
     console.log(`📨 GoHighLevel workflow notification ${GHL_ENABLED ? 'enabled' : 'disabled'}`);
-    console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? 'enabled' : 'disabled'}) / PayPal(${PAYPAL_ENABLED ? 'enabled' : 'disabled'})`);
+    console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? `enabled:${STRIPE_MODE}` : 'disabled'}) / PayPal(${PAYPAL_ENABLED ? 'enabled' : 'disabled'})`);
+    if (!STRIPE_ENABLED && STRIPE_CONFIG_ISSUES.length) {
+        console.warn(`⚠️ Stripe config issue: ${STRIPE_CONFIG_ISSUES.join(', ')}`);
+    }
 });
