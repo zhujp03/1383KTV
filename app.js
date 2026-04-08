@@ -1558,7 +1558,14 @@ app.post('/api/admin/login', async (req, res) => {
 
 // 5.2 获取所有预订记录 API (受保护)
 app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
-    const sql = `SELECT * FROM bookings ORDER BY date ASC, time ASC`;
+    const sql = `SELECT *
+                 FROM bookings
+                 WHERE NOT (
+                     LOWER(COALESCE(payment_status, 'unpaid')) = 'unpaid'
+                     AND LOWER(COALESCE(deposit, 'no')) != 'yes'
+                     AND TRIM(COALESCE(payment_method, '')) = ''
+                 )
+                 ORDER BY date ASC, time ASC`;
     db.all(sql, [], (err, rows) => {
         if (err) return res.status(500).json({ error: 'Failed to fetch bookings.' });
         res.status(200).json({ total: rows.length, data: rows });
