@@ -1558,17 +1558,26 @@ app.post('/api/admin/login', async (req, res) => {
 
 // 5.2 获取所有预订记录 API (受保护)
 app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
-    const sql = `SELECT *
-                 FROM bookings
-                 WHERE NOT (
-                     LOWER(COALESCE(payment_status, 'unpaid')) = 'unpaid'
-                     AND LOWER(COALESCE(deposit, 'no')) != 'yes'
-                     AND TRIM(COALESCE(payment_method, '')) = ''
-                 )
-                 ORDER BY date ASC, time ASC`;
-    db.all(sql, [], (err, rows) => {
-        if (err) return res.status(500).json({ error: 'Failed to fetch bookings.' });
-        res.status(200).json({ total: rows.length, data: rows });
+    const todayYmd = getBusinessDateYmd();
+    const cleanupSql = `DELETE FROM bookings WHERE date < ?`;
+    const listSql = `SELECT *
+                     FROM bookings
+                     WHERE NOT (
+                         LOWER(COALESCE(payment_status, 'unpaid')) = 'unpaid'
+                         AND LOWER(COALESCE(deposit, 'no')) != 'yes'
+                         AND TRIM(COALESCE(payment_method, '')) = ''
+                     )
+                     ORDER BY date ASC, time ASC`;
+
+    db.run(cleanupSql, [todayYmd], (cleanupErr) => {
+        if (cleanupErr) {
+            console.error('Failed to cleanup outdated bookings before admin refresh:', cleanupErr.message);
+        }
+
+        db.all(listSql, [], (err, rows) => {
+            if (err) return res.status(500).json({ error: 'Failed to fetch bookings.' });
+            res.status(200).json({ total: rows.length, data: rows });
+        });
     });
 });
 
