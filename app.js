@@ -69,6 +69,7 @@ const GHL_REQUEST_TIMEOUT_MS = Number(process.env.GHL_REQUEST_TIMEOUT_MS || 8000
 const GHL_ENABLED = Boolean(GHL_PRIVATE_TOKEN && GHL_LOCATION_ID && GHL_BOOKING_WORKFLOW_ID);
 
 const PAYMENT_CURRENCY = String(process.env.PAYMENT_CURRENCY || 'CAD').trim().toUpperCase();
+const PAYMENT_PENDING_HOLD_MINUTES = Math.max(1, Number(process.env.PAYMENT_PENDING_HOLD_MINUTES || 15));
 const ROOM_FIRST_HOUR_PRICE = {
     'Small Room': Number(process.env.ROOM_PRICE_SMALL || 55),
     'Medium Room': Number(process.env.ROOM_PRICE_MEDIUM || 65),
@@ -343,6 +344,23 @@ function cleanupOldHistoricalOrders() {
     });
 }
 
+function cleanupExpiredPendingPaymentBookings() {
+    const threshold = new Date(Date.now() - (PAYMENT_PENDING_HOLD_MINUTES * 60 * 1000));
+    const thresholdYmdHms = getBusinessDateTimeYmdHms(threshold);
+    const sql = `DELETE FROM bookings
+                 WHERE LOWER(COALESCE(payment_status, 'unpaid')) = 'unpaid'
+                   AND LOWER(COALESCE(deposit, 'no')) != 'yes'
+                   AND TRIM(COALESCE(payment_method, '')) = ''
+                   AND created_at < ?`;
+    db.run(sql, [thresholdYmdHms], function(err) {
+        if (err) {
+            console.error('Pending-payment cleanup failed:', err.message);
+        } else if (this.changes > 0) {
+            console.log(`🧹 Pending-payment cleanup executed: Released ${this.changes} unpaid reservations.`);
+        }
+    });
+}
+
 function normalizeDepositValue(deposit) {
     return String(deposit || '').trim().toLowerCase() === 'yes' ? 'Yes' : 'No';
 }
@@ -565,6 +583,31 @@ function toCents(amount) {
 
 function normalizePaymentStatus(value) {
     return String(value || '').trim().toLowerCase() === 'paid' ? 'paid' : 'unpaid';
+}
+
+function isPendingPaymentHoldExpired(booking) {
+    if (!booking) return false;
+    if (normalizePaymentStatus(booking.payment_status) === 'paid') return false;
+    if (normalizeDepositValue(booking.deposit) === 'Yes') return false;
+    if (String(booking.payment_method || '').trim() !== '') return false;
+    const createdAt = String(booking.created_at || '').trim();
+    if (!createdAt) return false;
+    const threshold = getBusinessDateTimeYmdHms(new Date(Date.now() - (PAYMENT_PENDING_HOLD_MINUTES * 60 * 1000)));
+    return createdAt < threshold;
+}
+
+async function releaseBookingIfPendingHoldExpired(booking) {
+    if (!isPendingPaymentHoldExpired(booking)) {
+        return false;
+    }
+    await dbRun(
+        `DELETE FROM bookings
+         WHERE id = ?
+           AND LOWER(COALESCE(payment_status, 'unpaid')) = 'unpaid'
+           AND LOWER(COALESCE(deposit, 'no')) != 'yes'`,
+        [Number(booking.id)]
+    );
+    return true;
 }
 
 function getRoomFirstHourPrice(room) {
@@ -1029,6 +1072,9 @@ function syncHistoricalOrder(booking) {
 
 // 每天执行一次历史订单清理
 setInterval(cleanupOldHistoricalOrders, 24 * 60 * 60 * 1000);
+// 每分钟执行一次未支付超时释放
+setInterval(cleanupExpiredPendingPaymentBookings, 60 * 1000);
+cleanupExpiredPendingPaymentBookings();
 
 // 极简身份验证中间件 (用于保护后台 API)
 function checkAdminLogin(req, res, next) {
@@ -1052,6 +1098,7 @@ app.get('/api/public/security-config', (req, res) => {
         turnstileSiteKey: CAPTCHA_ENABLED ? TURNSTILE_SITE_KEY : '',
         payment: {
             currency: PAYMENT_CURRENCY,
+            pendingHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
             providers: {
                 stripe: {
                     enabled: STRIPE_ENABLED,
@@ -1082,8 +1129,9 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
         return res.status(phoneLimitResult.statusCode || 429).json({ error: phoneLimitResult.error });
     }
 
-    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?)`;
+    const cancelToken = generatePaymentCancelToken();
+    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference, payment_cancel_token, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, ?)`;
 
     try {
         const runResult = await dbRun(sql, [
@@ -1094,6 +1142,7 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             bookingData.duration,
             bookingData.name,
             bookingData.phone,
+            cancelToken,
             getBusinessDateTimeYmdHms()
         ]);
         const bookingId = runResult.lastID;
@@ -1133,6 +1182,8 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             notification,
             normalizedPhone: bookingData.phone,
             paymentStatus: 'unpaid',
+            paymentCancelToken: cancelToken,
+            paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
             paymentQuote,
             paymentProviders: {
                 stripe: STRIPE_ENABLED
@@ -1154,6 +1205,11 @@ app.get('/api/book/:id/payment-quote', async (req, res) => {
         const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
         if (!booking) {
             return res.status(404).json({ error: 'Booking not found.' });
+        }
+        if (await releaseBookingIfPendingHoldExpired(booking)) {
+            return res.status(410).json({
+                error: `Payment hold expired (${PAYMENT_PENDING_HOLD_MINUTES} minutes). Please submit a new booking.`
+            });
         }
 
         const paymentQuote = calculateBookingPaymentQuote(booking);
@@ -1194,6 +1250,11 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         );
         if (!booking) {
             return res.status(404).json({ error: 'Booking not found or phone does not match.' });
+        }
+        if (await releaseBookingIfPendingHoldExpired(booking)) {
+            return res.status(410).json({
+                error: `Payment hold expired (${PAYMENT_PENDING_HOLD_MINUTES} minutes). Please submit a new booking.`
+            });
         }
 
         if (normalizePaymentStatus(booking.payment_status) === 'paid') {
@@ -1246,6 +1307,8 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
             provider: 'stripe',
             checkoutUrl: session.url,
             sessionId: session.id,
+            cancelToken,
+            paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
             paymentQuote: quote
         });
     } catch (err) {
@@ -1259,15 +1322,16 @@ app.post('/api/book/:id/payment/cancel', async (req, res) => {
         const bookingId = Number(req.params.id);
         const provider = String(req.body?.provider || '').trim().toLowerCase();
         const cancelToken = String(req.body?.cancelToken || req.query?.cancelToken || '').trim();
+        const phoneRaw = String(req.body?.phone || '').trim();
 
         if (!Number.isFinite(bookingId) || bookingId <= 0) {
             return res.status(400).json({ error: 'Invalid booking id.' });
         }
-        if (provider !== 'stripe') {
+        if (provider && provider !== 'stripe') {
             return res.status(400).json({ error: 'Unsupported payment provider. Only Stripe is available.' });
         }
-        if (!cancelToken) {
-            return res.status(400).json({ error: 'Missing cancel token.' });
+        if (!cancelToken && !phoneRaw) {
+            return res.status(400).json({ error: 'Missing cancel token or phone number.' });
         }
 
         const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
@@ -1278,9 +1342,21 @@ app.post('/api/book/:id/payment/cancel', async (req, res) => {
             return res.status(409).json({ error: 'Booking is already paid and cannot be auto-cancelled.' });
         }
 
+        let authorized = false;
         const storedToken = String(booking.payment_cancel_token || '').trim();
-        if (!storedToken || storedToken !== cancelToken) {
-            return res.status(403).json({ error: 'Invalid cancel token for this booking.' });
+        if (cancelToken && storedToken && storedToken === cancelToken) {
+            authorized = true;
+        }
+
+        if (!authorized && phoneRaw) {
+            const phoneCandidates = buildPhoneQueryCandidates(phoneRaw);
+            if (phoneCandidates.includes(String(booking.phone || '').trim())) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) {
+            return res.status(403).json({ error: 'Invalid cancellation credentials for this booking.' });
         }
 
         await dbRun(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
@@ -1471,6 +1547,7 @@ app.post('/api/admin/login', async (req, res) => {
         // 登录成功时触发一次过期清理
         cleanupOldBookings();
         cleanupOldHistoricalOrders();
+        cleanupExpiredPendingPaymentBookings();
 
         res.json({ message: 'Login successful', username: row.username });
     } catch (err) {

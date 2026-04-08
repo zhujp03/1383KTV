@@ -749,7 +749,7 @@
         </div>
 
         <div class="actions">
-            <button class="back-btn" onclick="goToStep(4)">← Back</button>
+            <button class="back-btn" onclick="goToStep(4)">Release & Back</button>
             <button class="next-btn" id="refresh-payment-status-btn" onclick="refreshPaymentQuote()">Refresh Amount</button>
         </div>
     </div>
@@ -777,11 +777,17 @@
         duration: null,
         upsellInterest: '',
         paymentStatus: 'unpaid',
-        paymentQuote: null
+        paymentQuote: null,
+        paymentCancelToken: ''
     };
 
     let currentDayBookings = [];
     let modalCloseHandler = null;
+    let currentStepNumber = 1;
+    let paymentRedirectInProgress = false;
+    let paymentReleaseInProgress = false;
+    let paymentHoldTimerId = null;
+    let pageExitReleaseTriggered = false;
     let securityConfig = {
         businessTimeZone: 'America/New_York',
         captchaEnabled: false,
@@ -789,6 +795,7 @@
         turnstileSiteKey: '',
         payment: {
             currency: 'CAD',
+            pendingHoldMinutes: 15,
             providers: {
                 stripe: { enabled: false, publishableKey: '' }
             }
@@ -843,7 +850,134 @@
         return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
     }
 
+    function getPaymentPendingHoldMinutes() {
+        const value = Number(securityConfig?.payment?.pendingHoldMinutes || 15);
+        return Number.isFinite(value) && value > 0 ? value : 15;
+    }
+
+    function isPendingUnpaidReservation() {
+        const bookingId = Number(bookingData.bookingId || 0);
+        const status = String(bookingData.paymentStatus || 'unpaid').toLowerCase();
+        return bookingId > 0 && status !== 'paid';
+    }
+
+    function clearPaymentHoldTimer() {
+        if (!paymentHoldTimerId) return;
+        clearTimeout(paymentHoldTimerId);
+        paymentHoldTimerId = null;
+    }
+
+    function clearPendingReservationState() {
+        bookingData.bookingId = null;
+        bookingData.paymentStatus = 'unpaid';
+        bookingData.paymentQuote = null;
+        bookingData.paymentCancelToken = '';
+        clearPaymentHoldTimer();
+    }
+
+    async function releaseUnpaidReservation(options = {}) {
+        const { keepalive = false, silent = false, reason = 'manual-release' } = options;
+        if (!isPendingUnpaidReservation() || paymentRedirectInProgress) {
+            return { ok: true, skipped: true };
+        }
+
+        const bookingId = Number(bookingData.bookingId || 0);
+        const payload = {
+            provider: 'stripe',
+            cancelToken: String(bookingData.paymentCancelToken || '').trim(),
+            phone: String(bookingData.phone || '').trim(),
+            reason
+        };
+
+        try {
+            const response = await fetch(`/api/book/${bookingId}/payment/cancel`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                keepalive: Boolean(keepalive)
+            });
+            const result = await response.json().catch(() => ({}));
+
+            if (response.ok) {
+                return { ok: true, released: true };
+            }
+            if (response.status === 404) {
+                return { ok: true, alreadyGone: true };
+            }
+            if (response.status === 409) {
+                return { ok: true, alreadyPaid: true };
+            }
+            if (!silent) {
+                console.warn('Failed to auto-release unpaid reservation:', result.error || response.statusText);
+            }
+            return { ok: false, error: result.error || 'Failed to auto-release reservation.' };
+        } catch (error) {
+            if (!silent) {
+                console.error('Failed to auto-release unpaid reservation:', error);
+            }
+            return { ok: false, error: 'Network error while auto-releasing reservation.' };
+        }
+    }
+
+    async function leavePaymentStepAndRelease(targetStep) {
+        if (paymentReleaseInProgress) return;
+        paymentReleaseInProgress = true;
+        const releaseResult = await releaseUnpaidReservation({ reason: 'leave-payment-step' });
+        paymentReleaseInProgress = false;
+
+        if (!releaseResult.ok) {
+            openAppModal(
+                releaseResult.error || 'Unable to release unpaid reservation. Please try again or contact admin.',
+                { title: 'Release Failed' }
+            );
+            return;
+        }
+
+        clearPendingReservationState();
+        setStepVisibility(targetStep);
+        openAppModal('Payment was not completed, so this reservation has been released automatically.', {
+            title: 'Reservation Released'
+        });
+    }
+
+    function schedulePaymentHoldAutoRelease() {
+        clearPaymentHoldTimer();
+        if (!isPendingUnpaidReservation() || currentStepNumber !== 5 || paymentRedirectInProgress) {
+            return;
+        }
+
+        const holdMinutes = getPaymentPendingHoldMinutes();
+        paymentHoldTimerId = setTimeout(async () => {
+            if (!isPendingUnpaidReservation() || currentStepNumber !== 5 || paymentRedirectInProgress) {
+                return;
+            }
+            const releaseResult = await releaseUnpaidReservation({ reason: 'payment-hold-timeout' });
+            if (!releaseResult.ok) {
+                openAppModal(
+                    releaseResult.error || 'Payment hold timeout reached, but release failed. Please contact admin.',
+                    { title: 'Release Failed' }
+                );
+                return;
+            }
+            clearPendingReservationState();
+            setStepVisibility(4);
+            openAppModal('Payment window expired and this reservation was released automatically.', {
+                title: 'Payment Timed Out'
+            });
+        }, holdMinutes * 60 * 1000);
+    }
+
+    function handlePageExitAutoRelease() {
+        if (pageExitReleaseTriggered) return;
+        if (!isPendingUnpaidReservation()) return;
+        if (currentStepNumber !== 5) return;
+        if (paymentRedirectInProgress) return;
+        pageExitReleaseTriggered = true;
+        releaseUnpaidReservation({ keepalive: true, silent: true, reason: 'page-exit' });
+    }
+
     window.onload = async function() {
+        paymentRedirectInProgress = false;
         await loadSecurityConfig();
         const today = getBusinessTodayYmd();
         document.getElementById('booking-date').setAttribute('min', today);
@@ -851,6 +985,11 @@
         updateUpsellMentions();
         await handlePaymentReturnFromQuery();
     };
+    window.addEventListener('pagehide', handlePageExitAutoRelease);
+    window.addEventListener('beforeunload', handlePageExitAutoRelease);
+    window.addEventListener('pageshow', () => {
+        pageExitReleaseTriggered = false;
+    });
 
     async function loadSecurityConfig() {
         const captchaSection = document.getElementById('captcha-section');
@@ -988,6 +1127,7 @@
             bookingData.paymentStatus = result.paymentStatus || 'unpaid';
             renderPaymentQuote(result.paymentQuote);
             if (bookingData.paymentStatus === 'paid') {
+                clearPaymentHoldTimer();
                 openAppModal('This booking is already paid.', { title: 'Payment Complete' });
             }
         } catch (error) {
@@ -1009,6 +1149,7 @@
         }
 
         paymentActionInProgress = true;
+        let didRedirectToGateway = false;
         const hintNode = document.getElementById('payment-step-hint');
         if (hintNode) {
             hintNode.textContent = 'Redirecting to Stripe checkout...';
@@ -1030,6 +1171,7 @@
             }
 
             if (result.paymentStatus === 'paid') {
+                clearPaymentHoldTimer();
                 openAppModal('This booking is already paid.', { title: 'Payment Complete' });
                 return;
             }
@@ -1038,19 +1180,31 @@
                 return;
             }
 
+            if (result.cancelToken) {
+                bookingData.paymentCancelToken = result.cancelToken;
+            }
+            if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {
+                securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
+            }
+            paymentRedirectInProgress = true;
+            didRedirectToGateway = true;
             window.location.href = result.checkoutUrl;
         } catch (error) {
             console.error('Failed to start payment:', error);
             openAppModal('Unable to connect to payment gateway. Please try again.', { title: 'Connection Issue' });
         } finally {
             paymentActionInProgress = false;
-            if (hintNode) {
+            if (!didRedirectToGateway) {
+                paymentRedirectInProgress = false;
+            }
+            if (hintNode && !didRedirectToGateway) {
                 hintNode.textContent = 'After payment succeeds, we will mark your booking as paid automatically.';
             }
         }
     }
 
     async function handlePaymentReturnFromQuery() {
+        paymentRedirectInProgress = false;
         const params = new URLSearchParams(window.location.search);
         const paymentState = (params.get('payment') || '').trim().toLowerCase();
         const provider = (params.get('provider') || '').trim().toLowerCase();
@@ -1076,11 +1230,11 @@
                         { title: 'Payment Cancelled' }
                     );
                     bookingData.bookingId = bookingId;
+                    bookingData.paymentCancelToken = cancelToken || bookingData.paymentCancelToken || '';
                     goToStep(5);
                 } else {
-                    bookingData.bookingId = null;
-                    bookingData.paymentStatus = 'unpaid';
-                    goToStep(4);
+                    clearPendingReservationState();
+                    goToStep(4, { skipRelease: true });
                     openAppModal('Payment was cancelled and this unpaid reservation has been automatically released.', {
                         title: 'Reservation Released'
                     });
@@ -1092,6 +1246,7 @@
                     { title: 'Payment Cancelled' }
                 );
                 bookingData.bookingId = bookingId;
+                bookingData.paymentCancelToken = cancelToken || bookingData.paymentCancelToken || '';
                 goToStep(5);
             }
             window.history.replaceState({}, document.title, window.location.pathname);
@@ -1121,6 +1276,8 @@
                 });
             } else {
                 bookingData.paymentStatus = 'paid';
+                bookingData.paymentCancelToken = '';
+                clearPaymentHoldTimer();
                 openAppModal(
                     'Payment successful. Your booking is now confirmed as PAID. Thank you!',
                     {
@@ -1157,7 +1314,16 @@
         selectRoom(roomName, roomCard);
     }
 
-    function goToStep(stepNumber) {
+    function goToStep(stepNumber, options = {}) {
+        const skipRelease = Boolean(options && options.skipRelease);
+        if (!skipRelease && currentStepNumber === 5 && stepNumber !== 5 && isPendingUnpaidReservation()) {
+            leavePaymentStepAndRelease(stepNumber);
+            return;
+        }
+        setStepVisibility(stepNumber);
+    }
+
+    function setStepVisibility(stepNumber) {
         document.querySelectorAll('.step-content').forEach(el => el.style.display = 'none');
         document.getElementById(`step-${stepNumber}`).style.display = 'block';
 
@@ -1169,6 +1335,12 @@
             }
         });
 
+        currentStepNumber = stepNumber;
+        if (stepNumber === 5) {
+            schedulePaymentHoldAutoRelease();
+        } else {
+            clearPaymentHoldTimer();
+        }
         updateUpsellMentions();
     }
 
@@ -1536,6 +1708,10 @@
             if (response.ok) {
                 bookingData.bookingId = result.bookingId;
                 bookingData.paymentStatus = result.paymentStatus || 'unpaid';
+                bookingData.paymentCancelToken = result.paymentCancelToken || bookingData.paymentCancelToken || '';
+                if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {
+                    securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
+                }
                 if (confirmBtn) {
                     confirmBtn.innerText = "Confirm Booking";
                     confirmBtn.disabled = false;
@@ -1550,9 +1726,9 @@
                     ? ` We also noted your interest in ${bookingData.upsellInterest}.`
                     : '';
                 openAppModal(
-                    `Booking request submitted successfully (Booking #${bookingData.bookingId}).${upsellFollowUp} Next step: complete payment in Step 5 to finalize.`,
+                    `Booking request submitted successfully (Booking #${bookingData.bookingId}).${upsellFollowUp} IMPORTANT: Please continue to pay the deposit now to secure your spot. If payment is not completed, this reservation will be automatically released.`,
                     {
-                        title: 'Request Received',
+                        title: 'Payment Required',
                         buttonText: 'Continue to Payment',
                         onClose: () => {
                             goToStep(5);
