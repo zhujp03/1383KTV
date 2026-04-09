@@ -33,7 +33,7 @@
    <p class="manage-subtitle">Enter the phone number you used when submitting your booking request.</p>
 
    <div class="search-bar-inline">
-     <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 6131234567" inputmode="numeric" maxlength="11" oninput="handleSearchPhoneInput(event)" onkeypress="handleEnter(event)">
+     <input type="tel" id="search-phone" class="neon-input" placeholder="e.g. 6131234567" inputmode="numeric" maxlength="10" oninput="handleSearchPhoneInput(event)" onkeypress="handleEnter(event)">
      <button class="btn-primary" onclick="searchBooking()" id="search-btn">Find Booking</button>
    </div>
 
@@ -84,11 +84,11 @@
   let pendingCancelPhone = null;
 
   function handleSearchPhoneInput(event) {
-    event.target.value = event.target.value.replace(/\D/g, '').slice(0, 11);
+    event.target.value = event.target.value.replace(/\D/g, '').slice(0, 10);
   }
 
   function isValidPhoneNumber(phone) {
-    return /^\d{10,11}$/.test(phone);
+    return /^\d{10}$/.test(phone);
   }
 
   function openNoticeModal(message, options = {}) {
@@ -181,7 +181,7 @@
     }
 
     if (!isValidPhoneNumber(phoneInput)) {
-      openNoticeModal('Phone number must be 10 or 11 digits and contain numbers only.', { title: 'Input Error' });
+      openNoticeModal('Phone number must be exactly 10 digits and contain numbers only.', { title: 'Input Error' });
       return;
     }
 

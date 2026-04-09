@@ -393,32 +393,39 @@
             tbody.innerHTML = '';
             result.data.forEach(b => {
                 const tr = document.createElement('tr');
+                const bookingType = String(b.booking_type || '').toLowerCase();
+                const isPrivateEvent = bookingType === 'private_event';
                 const paymentStatus = String(b.payment_status || '').toLowerCase() === 'paid' || String(b.deposit || '') === 'Yes' ? 'paid' : 'unpaid';
                 const statusBadge = paymentStatus === 'paid'
                     ? `<span style="background: rgba(16, 185, 129, 0.2); color: #10B981; border: 1px solid #10B981; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">Paid</span>`
                     : `<span style="background: rgba(239, 68, 68, 0.2); color: #EF4444; border: 1px solid #EF4444; padding: 2px 8px; border-radius: 12px; font-size: 0.8rem;">Unpaid</span>`;
                 const paidAmount = Number(b.payment_amount_cents || 0) / 100;
+                const displayDate = isPrivateEvent ? '-' : String(b.date || '-');
+                const displayTime = isPrivateEvent ? '-' : String(b.time || '-');
+                const displayDuration = isPrivateEvent ? '-' : `${b.duration} Hrs`;
+                const displayPartySize = isPrivateEvent ? '-' : String(b.partySize || '-');
                 const safeRoom = String(b.room || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                 const safeDate = String(b.date || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                 const safeTime = String(b.time || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                 const safeDuration = String(b.duration || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                 const safeName = String(b.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
                 const safePhone = String(b.phone || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+                const actionButtons = isPrivateEvent
+                    ? `<button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>`
+                    : `<button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${safeRoom}', '${b.partySize}', '${safeDate}', '${safeTime}', '${safeDuration}', '${safeName}', '${safePhone}', '${paymentStatus}', '${paidAmount.toFixed(2)}')">Edit</button>
+                       <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>`;
 
                 tr.innerHTML = `
                     <td>#${b.id}</td>
-                    <td style="color: var(--primary-blue); font-weight: bold;">${b.date} <br> ${b.time}</td>
+                    <td style="color: var(--primary-blue); font-weight: bold;">${displayDate} <br> ${displayTime}</td>
                     <td>${b.room}</td>
-                    <td>${b.duration} Hrs</td>
-                    <td>${b.partySize}</td>
+                    <td>${displayDuration}</td>
+                    <td>${displayPartySize}</td>
                     <td>${b.name}</td>
                     <td>${b.phone}</td>
                     <td>${statusBadge}</td>
                     <td>$${paidAmount.toFixed(2)}</td>
-                    <td>
-                        <button class="action-btn btn-primary" onclick="openEditBookingModal(${b.id}, '${safeRoom}', '${b.partySize}', '${safeDate}', '${safeTime}', '${safeDuration}', '${safeName}', '${safePhone}', '${paymentStatus}', '${paidAmount.toFixed(2)}')">Edit</button>
-                        <button class="action-btn btn-danger" onclick="deleteBooking(${b.id})">Delete</button>
-                    </td>
+                    <td>${actionButtons}</td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -545,8 +552,8 @@
         document.getElementById('week-display').innerText = `Week of ${monthNames[startOfWeek.getMonth()]} ${startOfWeek.getDate()}`;
 
         // 2. 营业时间设置
-        const startHour = 18; // 18:00
-        const totalHours = 9; // 9个小时
+        const startHour = 14; // 14:00
+        const totalHours = 13; // 13个小时, 14:00 - 02:00
         const PIXELS_PER_MIN = 1; // 1分钟 = 1像素
 
         // 3. 构建左侧时间轴

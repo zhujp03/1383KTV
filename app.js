@@ -70,6 +70,10 @@ const GHL_ENABLED = Boolean(GHL_PRIVATE_TOKEN && GHL_LOCATION_ID && GHL_BOOKING_
 
 const PAYMENT_CURRENCY = String(process.env.PAYMENT_CURRENCY || 'CAD').trim().toUpperCase();
 const PAYMENT_PENDING_HOLD_MINUTES = Math.max(1, Number(process.env.PAYMENT_PENDING_HOLD_MINUTES || 15));
+const PRIVATE_EVENT_PRICE = Math.max(0, Number(process.env.PRIVATE_EVENT_PRICE || 1000));
+const PRIVATE_EVENT_PLACEHOLDER = 'N/A';
+const PRIVATE_EVENT_PLACEHOLDER_PHONE_PREFIX = 'PRIVATE-EVENT';
+const PRIVATE_EVENT_PLACEHOLDER_NAME = 'Private Event Request';
 const ROOM_FIRST_HOUR_PRICE = {
     'Small Room': Number(process.env.ROOM_PRICE_SMALL || 55),
     'Medium Room': Number(process.env.ROOM_PRICE_MEDIUM || 65),
@@ -217,6 +221,7 @@ const db = new sqlite3.Database(KTV_DB_PATH, (err) => {
             duration TEXT NOT NULL,
             name TEXT NOT NULL,
             phone TEXT NOT NULL,
+            booking_type TEXT DEFAULT 'standard',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`, () => {
             // 🌟 2. 数据库无损升级技巧：尝试添加 deposit 字段 (如果已经存在会报错，但我们忽略报错)
@@ -228,6 +233,7 @@ const db = new sqlite3.Database(KTV_DB_PATH, (err) => {
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_amount_cents INTEGER DEFAULT 0`, 'bookings.payment_amount_cents');
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_reference TEXT DEFAULT ''`, 'bookings.payment_reference');
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_cancel_token TEXT DEFAULT ''`, 'bookings.payment_cancel_token');
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN booking_type TEXT DEFAULT 'standard'`, 'bookings.booking_type');
         });
     }
 });
@@ -616,10 +622,15 @@ function getRoomFirstHourPrice(room) {
 }
 
 function calculateBookingPaymentQuote(booking) {
-    const firstHourPrice = getRoomFirstHourPrice(booking.room);
+    const bookingType = String(booking?.booking_type || '').trim().toLowerCase();
+    const isPrivateEvent = bookingType === 'private_event';
+    const firstHourPrice = isPrivateEvent ? PRIVATE_EVENT_PRICE : getRoomFirstHourPrice(booking.room);
     const subtotal = roundCurrency(firstHourPrice);
     const total = subtotal;
     const totalCents = toCents(total);
+    const safeRoomLabel = isPrivateEvent ? 'Private Event (Full Day)' : String(booking.room || 'Room');
+    const safeDate = String(booking.date || PRIVATE_EVENT_PLACEHOLDER);
+    const safeTime = String(booking.time || PRIVATE_EVENT_PLACEHOLDER);
 
     return {
         currency: PAYMENT_CURRENCY,
@@ -627,12 +638,18 @@ function calculateBookingPaymentQuote(booking) {
         subtotal,
         total,
         totalCents,
-        description: `1383 KTV Booking Deposit - ${booking.room} (${booking.date} ${booking.time})`
+        description: isPrivateEvent
+            ? `1383 KTV Private Event - Full Day (${safeDate})`
+            : `1383 KTV Booking Deposit - ${safeRoomLabel} (${safeDate} ${safeTime})`
     };
 }
 
 function generatePaymentCancelToken() {
     return crypto.randomBytes(24).toString('hex');
+}
+
+function generatePrivateEventPlaceholderPhone() {
+    return `${PRIVATE_EVENT_PLACEHOLDER_PHONE_PREFIX}-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
 }
 
 function isLocalHostname(hostname) {
@@ -909,7 +926,12 @@ function validateBookingRequest(rawData) {
         return { ok: false, error: 'Party size must be between 1 and 30.' };
     }
 
-    const phoneCheck = normalizeAndValidatePhoneNumber(booking.phone);
+    const phoneDigits = String(booking.phone || '').replace(/[^\d]/g, '');
+    if (!/^\d{10}$/.test(phoneDigits)) {
+        return { ok: false, error: 'Phone number must be exactly 10 digits.' };
+    }
+
+    const phoneCheck = normalizeAndValidatePhoneNumber(phoneDigits);
     if (!phoneCheck.ok) return phoneCheck;
 
     return {
@@ -1111,6 +1133,61 @@ app.get('/api/public/security-config', (req, res) => {
     });
 });
 
+app.post('/api/book/private-event', bookingIpRateLimiter, enforceIpBookingCooldown, async (req, res) => {
+    const cancelToken = generatePaymentCancelToken();
+    const placeholderPhone = generatePrivateEventPlaceholderPhone();
+    const nowYmdHms = getBusinessDateTimeYmdHms();
+    const sql = `INSERT INTO bookings (
+                    room, partySize, date, time, duration, name, phone,
+                    deposit, payment_status, payment_method, payment_amount_cents, payment_reference,
+                    payment_cancel_token, booking_type, created_at
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, 'private_event', ?)`;
+
+    try {
+        const runResult = await dbRun(sql, [
+            'Small Room',
+            0,
+            PRIVATE_EVENT_PLACEHOLDER,
+            PRIVATE_EVENT_PLACEHOLDER,
+            PRIVATE_EVENT_PLACEHOLDER,
+            PRIVATE_EVENT_PLACEHOLDER_NAME,
+            placeholderPhone,
+            cancelToken,
+            nowYmdHms
+        ]);
+
+        const bookingId = Number(runResult.lastID);
+        const paymentQuote = calculateBookingPaymentQuote({
+            id: bookingId,
+            room: 'Small Room',
+            partySize: 0,
+            date: PRIVATE_EVENT_PLACEHOLDER,
+            time: PRIVATE_EVENT_PLACEHOLDER,
+            duration: PRIVATE_EVENT_PLACEHOLDER,
+            name: PRIVATE_EVENT_PLACEHOLDER_NAME,
+            phone: placeholderPhone,
+            booking_type: 'private_event'
+        });
+
+        return res.status(200).json({
+            message: 'Private event request created.',
+            bookingId,
+            normalizedPhone: placeholderPhone,
+            paymentStatus: 'unpaid',
+            paymentCancelToken: cancelToken,
+            paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
+            bookingType: 'private_event',
+            paymentQuote,
+            paymentProviders: {
+                stripe: STRIPE_ENABLED
+            }
+        });
+    } catch (err) {
+        console.error('Failed to create private event request:', err.message);
+        return res.status(500).json({ error: 'Failed to create private event request.' });
+    }
+});
+
 // 4.1 客户提交预订 API
 app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req, res) => {
     const validation = validateBookingRequest(req.body);
@@ -1130,8 +1207,8 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
     }
 
     const cancelToken = generatePaymentCancelToken();
-    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference, payment_cancel_token, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, ?)`;
+    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference, payment_cancel_token, booking_type, created_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, 'standard', ?)`;
 
     try {
         const runResult = await dbRun(sql, [
@@ -1184,6 +1261,7 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             paymentStatus: 'unpaid',
             paymentCancelToken: cancelToken,
             paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
+            bookingType: 'standard',
             paymentQuote,
             paymentProviders: {
                 stripe: STRIPE_ENABLED
@@ -1216,6 +1294,7 @@ app.get('/api/book/:id/payment-quote', async (req, res) => {
         return res.status(200).json({
             bookingId: booking.id,
             paymentStatus: normalizePaymentStatus(booking.payment_status),
+            bookingType: String(booking.booking_type || 'standard'),
             paymentQuote,
             paymentProviders: {
                 stripe: STRIPE_ENABLED
@@ -1232,6 +1311,7 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         const bookingId = Number(req.params.id);
         const provider = String(req.body?.provider || '').trim().toLowerCase();
         const phoneCandidates = buildPhoneQueryCandidates(req.body?.phone || '');
+        const providedCancelToken = String(req.body?.cancelToken || '').trim();
 
         if (!Number.isFinite(bookingId) || bookingId <= 0) {
             return res.status(400).json({ error: 'Invalid booking id.' });
@@ -1239,17 +1319,19 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         if (provider !== 'stripe') {
             return res.status(400).json({ error: 'Unsupported payment provider. Only Stripe is available.' });
         }
-        if (!phoneCandidates.length) {
-            return res.status(400).json({ error: 'Invalid phone number.' });
+        if (!phoneCandidates.length && !providedCancelToken) {
+            return res.status(400).json({ error: 'Missing payment credentials.' });
         }
 
-        const placeholders = phoneCandidates.map(() => '?').join(', ');
-        const booking = await dbGet(
-            `SELECT * FROM bookings WHERE id = ? AND phone IN (${placeholders})`,
-            [bookingId, ...phoneCandidates]
-        );
+        const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
         if (!booking) {
-            return res.status(404).json({ error: 'Booking not found or phone does not match.' });
+            return res.status(404).json({ error: 'Booking not found.' });
+        }
+
+        const tokenMatches = providedCancelToken && String(booking.payment_cancel_token || '').trim() === providedCancelToken;
+        const phoneMatches = phoneCandidates.includes(String(booking.phone || '').trim());
+        if (!tokenMatches && !phoneMatches) {
+            return res.status(403).json({ error: 'Booking credentials do not match.' });
         }
         if (await releaseBookingIfPendingHoldExpired(booking)) {
             return res.status(410).json({
@@ -1273,8 +1355,8 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         if (!baseUrl) {
             return res.status(500).json({ error: 'Unable to resolve public URL for payment redirect.' });
         }
-        const cancelToken = generatePaymentCancelToken();
-        await dbRun(`UPDATE bookings SET payment_cancel_token = ? WHERE id = ?`, [cancelToken, booking.id]);
+        const issuedCancelToken = generatePaymentCancelToken();
+        await dbRun(`UPDATE bookings SET payment_cancel_token = ? WHERE id = ?`, [issuedCancelToken, booking.id]);
 
         if (!STRIPE_ENABLED || !stripeClient) {
             return res.status(400).json({ error: 'Stripe is not configured yet.' });
@@ -1300,15 +1382,16 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
                 provider: 'stripe'
             },
             success_url: `${baseUrl}/pages/booking.html?payment=success&provider=stripe&bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}&cancelToken=${encodeURIComponent(cancelToken)}`
+            cancel_url: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}&cancelToken=${encodeURIComponent(issuedCancelToken)}`
         });
 
         return res.status(200).json({
             provider: 'stripe',
             checkoutUrl: session.url,
             sessionId: session.id,
-            cancelToken,
+            cancelToken: issuedCancelToken,
             paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
+            bookingType: String(booking.booking_type || 'standard'),
             paymentQuote: quote
         });
     } catch (err) {
@@ -1362,7 +1445,8 @@ app.post('/api/book/:id/payment/cancel', async (req, res) => {
         await dbRun(`DELETE FROM bookings WHERE id = ?`, [bookingId]);
         return res.status(200).json({
             message: 'Booking deleted after payment cancellation.',
-            bookingId
+            bookingId,
+            bookingType: String(booking.booking_type || 'standard')
         });
     } catch (err) {
         console.error('Failed to auto-cancel unpaid booking:', err.message);
@@ -1389,7 +1473,8 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
             return res.status(200).json({
                 message: 'Payment already confirmed.',
                 bookingId: booking.id,
-                paymentStatus: 'paid'
+                paymentStatus: 'paid',
+                bookingType: String(booking.booking_type || 'standard')
             });
         }
 
@@ -1438,6 +1523,7 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
             message: 'Payment confirmed successfully.',
             bookingId: booking.id,
             paymentStatus: 'paid',
+            bookingType: String(booking.booking_type || 'standard'),
             paymentNotification
         });
     } catch (err) {

@@ -541,6 +541,16 @@
                 <p class="room-desc">Premium sound system, upgraded lighting, and a more private atmosphere.</p>
                 <p class="room-desc">Perfect for parties, birthdays, and special nights.</p>
             </div>
+            <div class="room-card" data-room-key="private-event" data-room-name="Private Event" onclick="selectPrivateEvent(this)">
+                <span class="room-tier-label">Private Event</span>
+                <div class="card-header">
+                    <h3>Private Event</h3>
+                    <span class="price">$1000/day</span>
+                </div>
+                <p class="capacity">🔒 Full-day private booking</p>
+                <p class="room-desc">Secure a room for the whole day.</p>
+                <p class="room-desc">Selecting this option takes you directly to payment.</p>
+            </div>
         </div>
 
         <div class="upsell-section">
@@ -703,10 +713,10 @@
                 class="neon-input"
                 placeholder="6131234567"
                 inputmode="numeric"
-                maxlength="11"
+                maxlength="10"
                 oninput="handlePhoneInput(event)"
             >
-            <small class="field-hint">Use digits only, 10 or 11 numbers.</small>
+            <small class="field-hint">Use digits only, exactly 10 numbers.</small>
         </div>
 
         <div class="form-group" id="captcha-section" style="display: none;">
@@ -729,7 +739,7 @@
 
         <div class="service-menu-section">
             <h3>Deposit Summary</h3>
-            <p class="service-menu-note">Deposit amount = first-hour room price only.</p>
+            <p class="service-menu-note" id="payment-summary-note">Deposit amount = first-hour room price only.</p>
             <ul class="service-price-list" id="payment-breakdown-list">
                 <li><span>Room (first hour)</span><span class="service-item-price">-</span></li>
                 <li><span><strong>Total deposit due now</strong></span><span class="service-item-price" id="payment-total-amount">$0.00</span></li>
@@ -749,7 +759,7 @@
         </div>
 
         <div class="actions">
-            <button class="back-btn" onclick="goToStep(4)">Release & Back</button>
+            <button class="back-btn" onclick="goBackFromPaymentStep()">Release & Back</button>
             <button class="next-btn" id="refresh-payment-status-btn" onclick="refreshPaymentQuote()">Refresh Amount</button>
         </div>
     </div>
@@ -770,6 +780,7 @@
     // 1. 全局数据状态
     let bookingData = {
         bookingId: null,
+        bookingType: 'standard',
         room: null,
         partySize: 2,
         date: null,
@@ -828,6 +839,9 @@
         "vip-room": "vip",
         "large-room": "vip"
     };
+    const PRIVATE_EVENT_PLACEHOLDER = 'N/A';
+    const PRIVATE_EVENT_ROOM = 'Small Room';
+    const PRIVATE_EVENT_PLACEHOLDER_NAME = 'Private Event Request';
 
     function getBusinessTimeZone() {
         return String(securityConfig.businessTimeZone || 'America/New_York').trim() || 'America/New_York';
@@ -869,6 +883,7 @@
 
     function clearPendingReservationState() {
         bookingData.bookingId = null;
+        bookingData.bookingType = 'standard';
         bookingData.paymentStatus = 'unpaid';
         bookingData.paymentQuote = null;
         bookingData.paymentCancelToken = '';
@@ -1098,18 +1113,26 @@
         const list = document.getElementById('payment-breakdown-list');
         const totalNode = document.getElementById('payment-total-amount');
         const bookingHint = document.getElementById('payment-booking-id-hint');
+        const paymentSummaryNote = document.getElementById('payment-summary-note');
         const currency = quote.currency || (securityConfig.payment && securityConfig.payment.currency) || 'CAD';
         const roomFee = Number(quote.roomFirstHourPrice || 0);
         const total = Number(quote.total || 0);
+        const isPrivateEvent = String(bookingData.bookingType || '').toLowerCase() === 'private_event';
+        const lineItemLabel = isPrivateEvent ? 'Private Event (full day)' : 'Room (first hour)';
 
         if (list) {
             list.innerHTML = `
-                <li><span>Room (first hour)</span><span class="service-item-price">${formatMoney(roomFee, currency)}</span></li>
+                <li><span>${lineItemLabel}</span><span class="service-item-price">${formatMoney(roomFee, currency)}</span></li>
                 <li><span><strong>Total deposit due now</strong></span><span class="service-item-price">${formatMoney(total, currency)}</span></li>
             `;
         }
         if (totalNode) totalNode.textContent = formatMoney(total, currency);
         if (bookingHint) bookingHint.textContent = `Booking ID: #${bookingData.bookingId || '-'}`;
+        if (paymentSummaryNote) {
+            paymentSummaryNote.textContent = isPrivateEvent
+                ? 'Deposit amount = full-day private event price.'
+                : 'Deposit amount = first-hour room price only.';
+        }
     }
 
     async function refreshPaymentQuote() {
@@ -1125,6 +1148,7 @@
                 return;
             }
             bookingData.paymentStatus = result.paymentStatus || 'unpaid';
+            bookingData.bookingType = result.bookingType || bookingData.bookingType || 'standard';
             renderPaymentQuote(result.paymentQuote);
             if (bookingData.paymentStatus === 'paid') {
                 clearPaymentHoldTimer();
@@ -1161,7 +1185,8 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     provider,
-                    phone: bookingData.phone
+                    phone: bookingData.phone,
+                    cancelToken: bookingData.paymentCancelToken
                 })
             });
             const result = await response.json();
@@ -1185,6 +1210,9 @@
             }
             if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {
                 securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
+            }
+            if (result.bookingType) {
+                bookingData.bookingType = result.bookingType;
             }
             paymentRedirectInProgress = true;
             didRedirectToGateway = true;
@@ -1230,11 +1258,13 @@
                         { title: 'Payment Cancelled' }
                     );
                     bookingData.bookingId = bookingId;
+                    bookingData.bookingType = result.bookingType || bookingData.bookingType || 'standard';
                     bookingData.paymentCancelToken = cancelToken || bookingData.paymentCancelToken || '';
                     goToStep(5);
                 } else {
                     clearPendingReservationState();
-                    goToStep(4, { skipRelease: true });
+                    const fallbackStep = String(result.bookingType || '').toLowerCase() === 'private_event' ? 1 : 4;
+                    goToStep(fallbackStep, { skipRelease: true });
                     openAppModal('Payment was cancelled and this unpaid reservation has been automatically released.', {
                         title: 'Reservation Released'
                     });
@@ -1276,6 +1306,7 @@
                 });
             } else {
                 bookingData.paymentStatus = 'paid';
+                bookingData.bookingType = result.bookingType || bookingData.bookingType || 'standard';
                 bookingData.paymentCancelToken = '';
                 clearPaymentHoldTimer();
                 openAppModal(
@@ -1312,6 +1343,12 @@
         if (!roomName) return;
 
         selectRoom(roomName, roomCard);
+    }
+
+    function goBackFromPaymentStep() {
+        const isPrivateEvent = String(bookingData.bookingType || '').toLowerCase() === 'private_event';
+        const targetStep = isPrivateEvent ? 1 : 4;
+        goToStep(targetStep);
     }
 
     function goToStep(stepNumber, options = {}) {
@@ -1386,8 +1423,93 @@
         }
     }
 
+    async function selectPrivateEvent(element) {
+        if (paymentActionInProgress || paymentReleaseInProgress) return;
+
+        const stripeCfg = getPaymentProviderConfig('stripe');
+        if (!stripeCfg.enabled) {
+            openAppModal('Stripe is not configured yet, so Private Event payment is currently unavailable.', {
+                title: 'Payment Disabled'
+            });
+            return;
+        }
+
+        document.querySelectorAll('.room-card').forEach(el => el.classList.remove('selected'));
+        element.classList.add('selected');
+
+        const nextBtn = document.getElementById('btn-next-1');
+        if (nextBtn) {
+            nextBtn.disabled = true;
+            nextBtn.textContent = 'Preparing Private Event...';
+        }
+
+        try {
+            if (isPendingUnpaidReservation()) {
+                await releaseUnpaidReservation({ silent: true, reason: 'switch-to-private-event' });
+                clearPendingReservationState();
+            }
+
+            const response = await fetch('/api/book/private-event', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({})
+            });
+            const result = await response.json();
+
+            if (!response.ok) {
+                openAppModal(result.error || 'Unable to create private event request right now.', {
+                    title: 'Request Failed'
+                });
+                return;
+            }
+
+            bookingData.bookingType = 'private_event';
+            bookingData.room = PRIVATE_EVENT_ROOM;
+            bookingData.partySize = 0;
+            bookingData.date = PRIVATE_EVENT_PLACEHOLDER;
+            bookingData.time = PRIVATE_EVENT_PLACEHOLDER;
+            bookingData.duration = PRIVATE_EVENT_PLACEHOLDER;
+            bookingData.name = PRIVATE_EVENT_PLACEHOLDER_NAME;
+            bookingData.phone = result.normalizedPhone || bookingData.phone || '';
+            bookingData.bookingId = result.bookingId;
+            bookingData.paymentStatus = result.paymentStatus || 'unpaid';
+            bookingData.paymentCancelToken = result.paymentCancelToken || '';
+
+            if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {
+                securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
+            }
+
+            if (result.paymentQuote) {
+                renderPaymentQuote(result.paymentQuote);
+            } else {
+                await refreshPaymentQuote();
+            }
+
+            goToStep(5, { skipRelease: true });
+            openAppModal(
+                'Private Event selected. Please pay $1,000 now to secure your full-day private booking.',
+                {
+                    title: 'Private Event Payment',
+                    buttonText: 'Pay Now',
+                    onClose: () => startPayment('stripe')
+                }
+            );
+        } catch (error) {
+            console.error('Failed to prepare private event payment:', error);
+            openAppModal('Network error while preparing private event payment. Please try again.', {
+                title: 'Connection Issue'
+            });
+        } finally {
+            if (nextBtn) {
+                nextBtn.disabled = false;
+                nextBtn.textContent = 'Continue Booking →';
+            }
+        }
+    }
+
     // 🌟 选房间逻辑 (加入人数强制降级限制)
     function selectRoom(roomName, element) {
+        bookingData.bookingType = 'standard';
         bookingData.room = roomName;
         document.querySelectorAll('.room-card').forEach(el => el.classList.remove('selected'));
         element.classList.add('selected');
@@ -1620,11 +1742,11 @@
     }
 
     function handlePhoneInput(event) {
-        event.target.value = event.target.value.replace(/\D/g, '').slice(0, 11);
+        event.target.value = event.target.value.replace(/\D/g, '').slice(0, 10);
     }
 
     function isValidPhoneNumber(phone) {
-        return /^\d{10,11}$/.test(phone);
+        return /^\d{10}$/.test(phone);
     }
 
     function openAppModal(message, options = {}) {
@@ -1666,6 +1788,7 @@
     // 提交订单逻辑
     // ==========================================
     async function submitBooking() {
+        bookingData.bookingType = 'standard';
         const nameInput = document.getElementById('user-name').value.trim();
         const phoneInput = document.getElementById('user-phone').value.trim();
 
@@ -1675,7 +1798,7 @@
         }
 
         if (!isValidPhoneNumber(phoneInput)) {
-            openValidationModal('Phone number must be 10 or 11 digits and contain numbers only.');
+            openValidationModal('Phone number must be exactly 10 digits and contain numbers only.');
             return;
         }
 
@@ -1707,6 +1830,7 @@
 
             if (response.ok) {
                 bookingData.bookingId = result.bookingId;
+                bookingData.bookingType = result.bookingType || 'standard';
                 bookingData.paymentStatus = result.paymentStatus || 'unpaid';
                 bookingData.paymentCancelToken = result.paymentCancelToken || bookingData.paymentCancelToken || '';
                 if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {

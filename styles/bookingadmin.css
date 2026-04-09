@@ -293,8 +293,8 @@ body {
     display: grid;
     /* 第一列给时间标签，后面三列给房间 */
     grid-template-columns: 80px repeat(3, 1fr);
-    /* 每一行代表 1 小时，假设营业 9 小时 (18:00 - 03:00) */
-    grid-template-rows: 40px repeat(9, 60px);
+    /* 每一行代表 1 小时，营业 13 小时 (14:00 - 02:00) */
+    grid-template-rows: 40px repeat(13, 60px);
     gap: 1px;
     background-color: var(--border-color); /* 网格线颜色 */
 }
@@ -405,7 +405,7 @@ body {
 .uni-room-events {
     position: relative;
     flex: 1;
-    min-height: 540px; /* 9个小时 * 60px = 540px */
+    min-height: 780px; /* 13个小时 * 60px = 780px */
 }
 
 /* 绝对定位的预约块！ */
@@ -511,7 +511,7 @@ body {
 .uni-day-events {
     position: relative;
     flex: 1;
-    min-height: 540px; /* 9小时 */
+    min-height: 780px; /* 13小时 */
 }
 
 /* 绝对定位的预约块 */
