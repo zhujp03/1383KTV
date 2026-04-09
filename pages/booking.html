@@ -121,19 +121,20 @@
             font-size: 0.9rem;
             line-height: 1.45;
         }
-        .room-card.popular-room {
-            border-color: rgba(59, 130, 246, 0.65);
-            background: linear-gradient(180deg, rgba(23, 37, 66, 0.95), rgba(17, 24, 39, 0.95));
+        .room-card.popular-room:not(.selected) {
+            border-color: var(--border-color);
+            background: var(--card-bg);
+            box-shadow: none;
         }
-        .room-card.popular-room .room-tier-label {
-            border-color: rgba(59, 130, 246, 0.55);
-            color: #d6e8ff;
+        .room-card.popular-room:not(.selected) .room-tier-label {
+            border-color: rgba(156, 163, 175, 0.35);
+            color: var(--text-muted);
         }
-        .room-card.popular-room .room-desc {
-            color: #ced7e5;
+        .room-card.popular-room:not(.selected) .room-desc {
+            color: var(--text-muted);
         }
-        .room-card.popular-room .card-header h3 {
-            color: #e9f3ff;
+        .room-card.popular-room:not(.selected) .card-header h3 {
+            color: var(--text-main);
         }
 
         .upsell-section {
@@ -188,9 +189,9 @@
             transform: none;
             box-shadow: none;
         }
-        .upsell-card.recommended {
-            border-color: rgba(59, 130, 246, 0.55);
-            background: rgba(20, 34, 61, 0.7);
+        .upsell-card.recommended:not(.selected) {
+            border-color: var(--border-color);
+            background: rgba(7, 11, 20, 0.64);
         }
         .upsell-label {
             display: flex;
@@ -206,8 +207,8 @@
             align-items: center;
             padding: 2px 7px;
             border-radius: 999px;
-            border: 1px solid rgba(59, 130, 246, 0.45);
-            color: #d6e8ff;
+            border: 1px solid rgba(156, 163, 175, 0.35);
+            color: var(--text-muted);
             font-size: 0.68rem;
             letter-spacing: 0.35px;
             text-transform: uppercase;
@@ -507,8 +508,15 @@
 
     <div id="step-1" class="step-content">
         <h2 class="step-title">Choose Your Room</h2>
-        <p class="step-subtitle">Pick your room first, then build the perfect night.</p>
-        <p>Note: For all online bookings, deposit fees are non-refundable.</p>
+        <p class="step-subtitle">Pick your room first, then build the perfect night.<br>
+            For all online bookings, deposit fees are non-refundable.<br>
+            Please note the whole day refers to the entire business hours of the day
+        </p>
+<!--        <p class="step-subtitle">For all online bookings, deposit fees are non-refundable.\n-->
+<!--            Please note the whole day refers to the entire business hours of the day-->
+<!--            -->
+<!--        </p>-->
+<!--        <p class="step-subtitle">Note: Please note the whole day refers to the entire business hours of the day</p>-->
 
         <div class="rooms-grid">
             <div class="room-card" data-room-key="small" data-room-name="Small Room" onclick="selectRoom('Small Room', this)">
@@ -550,6 +558,7 @@
                 <p class="capacity">🔒 Full-day private booking</p>
                 <p class="room-desc">Secure a room for the whole day.</p>
                 <p class="room-desc">Selecting this option takes you directly to payment.</p>
+                <p class="room-desc">This option will include some late night bites, fruit plate, and more.</p>
             </div>
         </div>
 
@@ -581,7 +590,7 @@
                 </button>
             </div>
 
-            <p class="upsell-hint">Optional at this step. We will confirm package details with you after booking.</p>
+            <p class="upsell-hint">Overview of what we offers for packages</p>
         </div>
 
         <div class="actions">
@@ -699,6 +708,10 @@
     <div id="step-4" class="step-content" style="display: none;">
         <h2 class="step-title">Your Details</h2>
         <p class="step-subtitle">Almost there! Please provide your contact info.</p>
+        <p class="step-subtitle" style="margin-top: -8px; color: #FBBF24;">
+            iPhone users: To pay online with Apple Pay, please open this booking link in Safari or your iPhone's default browser.
+            Chrome is not supported for Apple Pay.
+        </p>
 
         <div class="form-group">
             <label for="user-name">Full Name</label>
