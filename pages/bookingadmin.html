@@ -41,6 +41,7 @@
         <div class="section-header">
             <h2>Recent Bookings</h2>
             <div style="display: flex; gap: 10px;">
+                <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="syncGoogleCalendarNow()">📅 Sync Google Calendar</button>
                 <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="openManualBookingModal()">+ Manual Add Booking</button>
                 <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="loadBookings()">🔄 Refresh</button>
             </div>
@@ -368,6 +369,27 @@
     }
 
     // ======================= API 调用：预约管理 =======================
+
+    async function syncGoogleCalendarNow() {
+        try {
+            const res = await fetch('/api/admin/google-calendar/sync', {
+                method: 'POST',
+                headers: getAuthHeaders()
+            });
+            if (res.status === 401) return handleLogout();
+            const result = await res.json();
+            if (!res.ok) {
+                alert(result.error || result.reason || 'Google Calendar sync failed.');
+                return;
+            }
+            const msg = `Google Calendar sync complete.\nInserted: ${result.inserted || 0}\nUpdated: ${result.updated || 0}\nRemoved: ${result.removed || 0}\nSkipped: ${result.skipped || 0}`;
+            alert(msg);
+            loadBookings();
+        } catch (err) {
+            console.error('Failed to sync Google Calendar:', err);
+            alert('Network error while syncing Google Calendar.');
+        }
+    }
 
     async function loadBookings() {
         const tbody = document.getElementById('bookings-table-body');

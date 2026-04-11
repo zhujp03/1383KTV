@@ -68,6 +68,21 @@ const GHL_PAYMENT_WORKFLOW_ID = String(process.env.GHL_PAYMENT_WORKFLOW_ID || ''
 const GHL_REQUEST_TIMEOUT_MS = Number(process.env.GHL_REQUEST_TIMEOUT_MS || 8000);
 const GHL_ENABLED = Boolean(GHL_PRIVATE_TOKEN && GHL_LOCATION_ID && GHL_BOOKING_WORKFLOW_ID);
 
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
+const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
+const GOOGLE_REFRESH_TOKEN = String(process.env.GOOGLE_REFRESH_TOKEN || '').trim();
+const GOOGLE_CALENDAR_ID = String(process.env.GOOGLE_CALENDAR_ID || 'primary').trim() || 'primary';
+const GOOGLE_CALENDAR_SYNC_INTERVAL_MS = Math.max(60 * 1000, Number(process.env.GOOGLE_CALENDAR_SYNC_INTERVAL_MS || 15 * 60 * 1000));
+const GOOGLE_CALENDAR_LOOKBACK_HOURS = Math.max(0, Number(process.env.GOOGLE_CALENDAR_LOOKBACK_HOURS || 12));
+const GOOGLE_CALENDAR_LOOKAHEAD_DAYS = Math.max(1, Number(process.env.GOOGLE_CALENDAR_LOOKAHEAD_DAYS || 90));
+const GOOGLE_CALENDAR_REQUEST_TIMEOUT_MS = Math.max(2000, Number(process.env.GOOGLE_CALENDAR_REQUEST_TIMEOUT_MS || 10000));
+const GOOGLE_CALENDAR_ENABLED = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET && GOOGLE_REFRESH_TOKEN);
+const GOOGLE_CALENDAR_CONFIG_ISSUES = [
+    GOOGLE_CLIENT_ID ? '' : 'missing GOOGLE_CLIENT_ID',
+    GOOGLE_CLIENT_SECRET ? '' : 'missing GOOGLE_CLIENT_SECRET',
+    GOOGLE_REFRESH_TOKEN ? '' : 'missing GOOGLE_REFRESH_TOKEN'
+].filter(Boolean);
+
 const PAYMENT_CURRENCY = String(process.env.PAYMENT_CURRENCY || 'CAD').trim().toUpperCase();
 const PAYMENT_PENDING_HOLD_MINUTES = Math.max(1, Number(process.env.PAYMENT_PENDING_HOLD_MINUTES || 15));
 const PRIVATE_EVENT_PRICE = Math.max(0, Number(process.env.PRIVATE_EVENT_PRICE || 1000));
@@ -100,6 +115,8 @@ const stripeClient = STRIPE_ENABLED ? new Stripe(STRIPE_SECRET_KEY) : null;
 const ipLastRequestAt = new Map();
 const phoneRequestState = new Map();
 const THROTTLE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+let googleAccessTokenCache = { token: '', expiresAt: 0 };
+let googleCalendarSyncInProgress = false;
 
 fs.mkdirSync(DATABASE_DIR, { recursive: true });
 
@@ -431,6 +448,15 @@ function dbGet(sql, params = []) {
     });
 }
 
+function dbAll(sql, params = []) {
+    return new Promise((resolve, reject) => {
+        db.all(sql, params, (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows || []);
+        });
+    });
+}
+
 function getClientIp(req) {
     return String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown');
 }
@@ -724,6 +750,279 @@ async function safeReadJson(response) {
         return JSON.parse(text);
     } catch (err) {
         return { raw: text };
+    }
+}
+
+function getBusinessYmdHmFromDate(dateObj) {
+    const parts = getDateTimePartsInTimeZone(dateObj, BUSINESS_TIME_ZONE);
+    return {
+        date: `${parts.year}-${parts.month}-${parts.day}`,
+        time: `${parts.hour}:${parts.minute}`
+    };
+}
+
+function detectRoomFromCalendarText(text) {
+    const lower = String(text || '').toLowerCase();
+    if (/\b(vip|large)\b/.test(lower)) return 'VIP Room';
+    if (/\b(medium|group)\b/.test(lower)) return 'Medium Room';
+    return 'Small Room';
+}
+
+function detectPaidFromCalendarText(text) {
+    return /\b(?:emt|auto)\b/i.test(String(text || ''));
+}
+
+function detectPartySizeFromCalendarText(text) {
+    const match = String(text || '').match(/\b(\d{1,2})\s*(?:p|people|person|persons)\b/i);
+    if (!match) return 0;
+    const size = Number(match[1]);
+    return Number.isFinite(size) && size >= 0 ? size : 0;
+}
+
+function extractBookingNameFromCalendarSummary(summary) {
+    const safe = String(summary || '').replace(/\s+/g, ' ').trim();
+    if (!safe) return 'Google Calendar Booking';
+    const tokens = safe.split(' ');
+    const roomTokenIndex = tokens.findIndex((t) => /^(small|medium|vip|large|group|room)$/i.test(t));
+    if (roomTokenIndex > 0) {
+        return tokens.slice(0, roomTokenIndex).join(' ').slice(0, 80);
+    }
+    return safe.slice(0, 80);
+}
+
+function extractAmountCentsFromCalendarText(text, room, paid) {
+    if (!paid) return 0;
+    const match = String(text || '').match(/\$(\d+(?:\.\d{1,2})?)/);
+    if (match) return toCents(roundCurrency(Number(match[1])));
+    return toCents(roundCurrency(getRoomFirstHourPrice(room)));
+}
+
+function extractPhoneFromCalendarText(text, fallbackReference) {
+    const safeText = String(text || '');
+    const phoneMatch = safeText.match(/(?:\+?1[\s().-]*)?(?:\d[\s().-]*){10}/);
+    if (phoneMatch) {
+        const digits = phoneMatch[0].replace(/[^\d]/g, '');
+        const tenDigits = digits.length === 11 && digits.startsWith('1')
+            ? digits.slice(1)
+            : digits.slice(-10);
+        const checked = normalizeAndValidatePhoneNumber(tenDigits);
+        if (checked.ok) return checked.e164;
+    }
+    const seed = String(fallbackReference || '').replace(/[^\w-]/g, '').slice(-12) || String(Date.now());
+    return `GCAL-${seed}`;
+}
+
+async function fetchGoogleAccessToken() {
+    const now = Date.now();
+    if (googleAccessTokenCache.token && googleAccessTokenCache.expiresAt > now + 30 * 1000) {
+        return googleAccessTokenCache.token;
+    }
+
+    const body = new URLSearchParams();
+    body.set('client_id', GOOGLE_CLIENT_ID);
+    body.set('client_secret', GOOGLE_CLIENT_SECRET);
+    body.set('refresh_token', GOOGLE_REFRESH_TOKEN);
+    body.set('grant_type', 'refresh_token');
+
+    const response = await fetchWithTimeout('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+    }, GOOGLE_CALENDAR_REQUEST_TIMEOUT_MS);
+    const payload = await safeReadJson(response);
+    if (!response.ok || !payload.access_token) {
+        throw new Error(`Google token refresh failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
+    }
+
+    const expiresInSec = Math.max(60, Number(payload.expires_in || 3600));
+    googleAccessTokenCache = {
+        token: String(payload.access_token || '').trim(),
+        expiresAt: now + (expiresInSec * 1000)
+    };
+    return googleAccessTokenCache.token;
+}
+
+async function fetchGoogleCalendarEvents(timeMinDate, timeMaxDate) {
+    const accessToken = await fetchGoogleAccessToken();
+    const params = new URLSearchParams({
+        singleEvents: 'true',
+        orderBy: 'startTime',
+        maxResults: '2500',
+        timeMin: timeMinDate.toISOString(),
+        timeMax: timeMaxDate.toISOString(),
+        timeZone: BUSINESS_TIME_ZONE
+    });
+    const calendarPath = encodeURIComponent(GOOGLE_CALENDAR_ID);
+    const url = `https://www.googleapis.com/calendar/v3/calendars/${calendarPath}/events?${params.toString()}`;
+    const response = await fetchWithTimeout(url, {
+        method: 'GET',
+        headers: {
+            Authorization: `Bearer ${accessToken}`,
+            Accept: 'application/json'
+        }
+    }, GOOGLE_CALENDAR_REQUEST_TIMEOUT_MS);
+    const payload = await safeReadJson(response);
+    if (!response.ok) {
+        throw new Error(`Google Calendar fetch failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
+    }
+    return Array.isArray(payload.items) ? payload.items : [];
+}
+
+function parseGoogleCalendarEvent(event) {
+    const eventId = String(event?.id || '').trim();
+    const startValue = String(event?.start?.dateTime || '').trim();
+    const endValue = String(event?.end?.dateTime || '').trim();
+    if (!eventId || !startValue || !endValue) return null;
+
+    const startDate = new Date(startValue);
+    const endDate = new Date(endValue);
+    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime()) || endDate <= startDate) return null;
+
+    const summary = String(event?.summary || '').trim();
+    const description = String(event?.description || '').trim();
+    const textBlob = `${summary} ${description}`.trim();
+    const room = detectRoomFromCalendarText(textBlob);
+    const paymentStatus = detectPaidFromCalendarText(textBlob) ? 'paid' : 'unpaid';
+    const deposit = paymentStatus === 'paid' ? 'Yes' : 'No';
+    const paymentReference = `gcal:${eventId}`;
+    const amountCents = extractAmountCentsFromCalendarText(textBlob, room, paymentStatus === 'paid');
+    const startParts = getBusinessYmdHmFromDate(startDate);
+    const durationHours = roundCurrency(Math.max(0.5, (endDate.getTime() - startDate.getTime()) / (60 * 60 * 1000)));
+
+    return {
+        paymentReference,
+        room,
+        partySize: detectPartySizeFromCalendarText(textBlob),
+        date: startParts.date,
+        time: startParts.time,
+        duration: String(durationHours),
+        name: extractBookingNameFromCalendarSummary(summary),
+        phone: extractPhoneFromCalendarText(textBlob, paymentReference),
+        deposit,
+        paymentStatus,
+        paymentAmountCents: amountCents
+    };
+}
+
+async function upsertGoogleCalendarBooking(parsedBooking) {
+    const existing = await dbGet(
+        `SELECT id FROM bookings WHERE payment_method = 'google-calendar' AND payment_reference = ? LIMIT 1`,
+        [parsedBooking.paymentReference]
+    );
+
+    if (existing) {
+        await dbRun(
+            `UPDATE bookings
+             SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?,
+                 deposit = ?, payment_status = ?, payment_amount_cents = ?, booking_type = 'standard'
+             WHERE id = ?`,
+            [
+                parsedBooking.room,
+                parsedBooking.partySize,
+                parsedBooking.date,
+                parsedBooking.time,
+                parsedBooking.duration,
+                parsedBooking.name,
+                parsedBooking.phone,
+                parsedBooking.deposit,
+                parsedBooking.paymentStatus,
+                parsedBooking.paymentAmountCents,
+                Number(existing.id)
+            ]
+        );
+        return { inserted: 0, updated: 1, reference: parsedBooking.paymentReference };
+    }
+
+    await dbRun(
+        `INSERT INTO bookings (
+            room, partySize, date, time, duration, name, phone, deposit, payment_status,
+            payment_method, payment_amount_cents, payment_reference, payment_cancel_token, booking_type, created_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'google-calendar', ?, ?, '', 'standard', ?)`,
+        [
+            parsedBooking.room,
+            parsedBooking.partySize,
+            parsedBooking.date,
+            parsedBooking.time,
+            parsedBooking.duration,
+            parsedBooking.name,
+            parsedBooking.phone,
+            parsedBooking.deposit,
+            parsedBooking.paymentStatus,
+            parsedBooking.paymentAmountCents,
+            parsedBooking.paymentReference,
+            getBusinessDateTimeYmdHms()
+        ]
+    );
+
+    return { inserted: 1, updated: 0, reference: parsedBooking.paymentReference };
+}
+
+async function syncGoogleCalendarBookings(options = {}) {
+    if (!GOOGLE_CALENDAR_ENABLED) {
+        return {
+            ok: false,
+            skipped: true,
+            reason: `Google Calendar integration is not configured (${GOOGLE_CALENDAR_CONFIG_ISSUES.join(', ') || 'unknown issue'}).`
+        };
+    }
+
+    if (googleCalendarSyncInProgress) {
+        return { ok: false, skipped: true, reason: 'Google Calendar sync is already running.' };
+    }
+
+    googleCalendarSyncInProgress = true;
+    try {
+        const now = new Date();
+        const timeMinDate = new Date(now.getTime() - (GOOGLE_CALENDAR_LOOKBACK_HOURS * 60 * 60 * 1000));
+        const timeMaxDate = new Date(now.getTime() + (GOOGLE_CALENDAR_LOOKAHEAD_DAYS * 24 * 60 * 60 * 1000));
+        const events = await fetchGoogleCalendarEvents(timeMinDate, timeMaxDate);
+
+        let inserted = 0;
+        let updated = 0;
+        let skipped = 0;
+        const activeReferences = new Set();
+
+        for (const event of events) {
+            const parsed = parseGoogleCalendarEvent(event);
+            if (!parsed) {
+                skipped += 1;
+                continue;
+            }
+            const result = await upsertGoogleCalendarBooking(parsed);
+            inserted += Number(result.inserted || 0);
+            updated += Number(result.updated || 0);
+            activeReferences.add(parsed.paymentReference);
+        }
+
+        const minDateYmd = getBusinessDateYmd(timeMinDate);
+        const maxDateYmd = getBusinessDateYmd(timeMaxDate);
+        const existingRows = await dbAll(
+            `SELECT id, payment_reference FROM bookings
+             WHERE payment_method = 'google-calendar'
+               AND date >= ?
+               AND date <= ?`,
+            [minDateYmd, maxDateYmd]
+        );
+
+        let removed = 0;
+        for (const row of existingRows) {
+            const reference = String(row.payment_reference || '').trim();
+            if (reference && activeReferences.has(reference)) continue;
+            await dbRun(`DELETE FROM bookings WHERE id = ?`, [Number(row.id)]);
+            removed += 1;
+        }
+
+        return {
+            ok: true,
+            inserted,
+            updated,
+            removed,
+            skipped,
+            totalEvents: events.length,
+            reason: String(options.reason || 'manual')
+        };
+    } finally {
+        googleCalendarSyncInProgress = false;
     }
 }
 
@@ -1097,6 +1396,28 @@ setInterval(cleanupOldHistoricalOrders, 24 * 60 * 60 * 1000);
 // 每分钟执行一次未支付超时释放
 setInterval(cleanupExpiredPendingPaymentBookings, 60 * 1000);
 cleanupExpiredPendingPaymentBookings();
+
+function startGoogleCalendarSyncJobs() {
+    if (!GOOGLE_CALENDAR_ENABLED) return;
+
+    setInterval(() => {
+        syncGoogleCalendarBookings({ reason: 'interval' }).then((result) => {
+            if (result && result.ok) {
+                console.log(`📅 Google Calendar sync complete: inserted=${result.inserted}, updated=${result.updated}, removed=${result.removed}, skipped=${result.skipped}`);
+            }
+        }).catch((err) => {
+            console.error('Google Calendar periodic sync failed:', err.message);
+        });
+    }, GOOGLE_CALENDAR_SYNC_INTERVAL_MS).unref();
+
+    syncGoogleCalendarBookings({ reason: 'startup' }).then((result) => {
+        if (result && result.ok) {
+            console.log(`📅 Google Calendar startup sync complete: inserted=${result.inserted}, updated=${result.updated}, removed=${result.removed}, skipped=${result.skipped}`);
+        }
+    }).catch((err) => {
+        console.error('Google Calendar startup sync failed:', err.message);
+    });
+}
 
 // 极简身份验证中间件 (用于保护后台 API)
 function checkAdminLogin(req, res, next) {
@@ -1642,6 +1963,19 @@ app.post('/api/admin/login', async (req, res) => {
     }
 });
 
+app.post('/api/admin/google-calendar/sync', checkAdminLogin, async (req, res) => {
+    try {
+        const result = await syncGoogleCalendarBookings({ reason: 'admin-manual' });
+        if (!result.ok && result.skipped) {
+            return res.status(400).json(result);
+        }
+        return res.status(200).json(result);
+    } catch (err) {
+        console.error('Admin-triggered Google Calendar sync failed:', err.message);
+        return res.status(500).json({ ok: false, error: 'Google Calendar sync failed.' });
+    }
+});
+
 // 5.2 获取所有预订记录 API (受保护)
 app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
     const todayYmd = getBusinessDateYmd();
@@ -1964,8 +2298,13 @@ app.listen(PORT, () => {
     console.log(`🕒 BUSINESS_TIME_ZONE: ${BUSINESS_TIME_ZONE}`);
     console.log(`🛡️ CAPTCHA ${CAPTCHA_ENABLED ? 'enabled' : 'disabled'} (${CAPTCHA_PROVIDER})`);
     console.log(`📨 GoHighLevel workflow notification ${GHL_ENABLED ? 'enabled' : 'disabled'}`);
+    console.log(`📅 Google Calendar sync ${GOOGLE_CALENDAR_ENABLED ? `enabled (${Math.round(GOOGLE_CALENDAR_SYNC_INTERVAL_MS / 60000)} min interval, calendar: ${GOOGLE_CALENDAR_ID})` : 'disabled'}`);
     console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? `enabled:${STRIPE_MODE}` : 'disabled'})`);
+    if (!GOOGLE_CALENDAR_ENABLED && GOOGLE_CALENDAR_CONFIG_ISSUES.length) {
+        console.warn(`⚠️ Google Calendar config issue: ${GOOGLE_CALENDAR_CONFIG_ISSUES.join(', ')}`);
+    }
     if (!STRIPE_ENABLED && STRIPE_CONFIG_ISSUES.length) {
         console.warn(`⚠️ Stripe config issue: ${STRIPE_CONFIG_ISSUES.join(', ')}`);
     }
+    startGoogleCalendarSyncJobs();
 });
