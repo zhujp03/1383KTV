@@ -1191,6 +1191,13 @@ async function verifyCaptchaToken(captchaToken, req) {
     }
 }
 
+function getDayOfWeekFromYmd(dateYmd) {
+    const parts = String(dateYmd || '').split('-').map(Number);
+    if (parts.length !== 3 || parts.some((n) => !Number.isFinite(n))) return NaN;
+    const [year, month, day] = parts;
+    return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
+}
+
 function validateBookingRequest(rawData) {
     const booking = rawData || {};
     const room = String(booking.room || '').trim();
@@ -1211,6 +1218,9 @@ function validateBookingRequest(rawData) {
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return { ok: false, error: 'Invalid booking date format.' };
+    }
+    if (getDayOfWeekFromYmd(date) === 1) {
+        return { ok: false, error: 'We are closed on Mondays. Please choose another date.' };
     }
 
     if (!/^\d{1,2}:\d{2}$/.test(time)) {

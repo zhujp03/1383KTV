@@ -39,6 +39,18 @@
 
     <section id="tab-bookings" class="content-section active">
         <div class="section-header">
+            <h2>Weekly Timetable</h2>
+            <div class="week-nav" style="display: flex; align-items: center;">
+                <button class="btn-primary" style="width: auto; padding: 5px 15px; background: transparent; border: 1px solid var(--primary-blue);" onclick="changeWeek(-1)">◀ Prev</button>
+                <h3 id="week-display" style="margin: 0 20px; color: var(--primary-blue);">Week of ...</h3>
+                <button class="btn-primary" style="width: auto; padding: 5px 15px; background: transparent; border: 1px solid var(--primary-blue);" onclick="changeWeek(1)">Next ▶</button>
+            </div>
+        </div>
+
+        <div class="uni-timetable" id="timetable-container">
+        </div>
+
+        <div class="section-header" style="margin-top: 50px;">
             <h2>Recent Bookings</h2>
             <div style="display: flex; gap: 10px;">
                 <button class="btn-primary" style="width: auto; padding: 10px 20px;" onclick="syncGoogleCalendarNow()">📅 Sync Google Calendar</button>
@@ -65,18 +77,6 @@
             <tbody id="bookings-table-body">
             </tbody>
         </table>
-
-        <div class="section-header" style="margin-top: 50px;">
-            <h2>Weekly Timetable</h2>
-            <div class="week-nav" style="display: flex; align-items: center;">
-                <button class="btn-primary" style="width: auto; padding: 5px 15px; background: transparent; border: 1px solid var(--primary-blue);" onclick="changeWeek(-1)">◀ Prev</button>
-                <h3 id="week-display" style="margin: 0 20px; color: var(--primary-blue);">Week of ...</h3>
-                <button class="btn-primary" style="width: auto; padding: 5px 15px; background: transparent; border: 1px solid var(--primary-blue);" onclick="changeWeek(1)">Next ▶</button>
-            </div>
-        </div>
-
-        <div class="uni-timetable" id="timetable-container">
-        </div>
 
         <div class="section-header" style="margin-top: 50px;">
             <h2>Valid Customers (Customer History)</h2>

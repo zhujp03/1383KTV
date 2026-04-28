@@ -683,6 +683,7 @@
         <div class="form-group">
             <label for="booking-date">1. Select Date</label>
             <input type="date" id="booking-date" class="neon-input" required onchange="handleDateChange()">
+            <small class="field-hint">We are closed on Mondays.</small>
         </div>
 
         <div class="form-group">
@@ -1577,11 +1578,28 @@
     function handleDateChange() {
         const dateVal = document.getElementById('booking-date').value;
         const durationSelect = document.getElementById('booking-duration');
+        const timeArea = document.getElementById('time-selection-area');
+        const nextBtn = document.getElementById('btn-next-3');
 
         if (!dateVal) return;
 
         // 判断选中的日期是星期几
         const dayOfWeek = getDayOfWeekFromYmd(dateVal); // 0是周日，5是周五，6是周六
+
+        if (dayOfWeek === 1) {
+            document.getElementById('booking-date').value = '';
+            durationSelect.innerHTML = '<option value="" disabled selected>Select Date First</option>';
+            timeArea.style.display = 'none';
+            document.getElementById('dynamic-time-container').innerHTML = '';
+            nextBtn.disabled = true;
+            bookingData.date = null;
+            bookingData.duration = null;
+            bookingData.time = null;
+            openAppModal('We are closed on Mondays. Please choose another date.', {
+                title: 'Closed on Monday'
+            });
+            return;
+        }
 
         // 清空原有的下拉选项
         durationSelect.innerHTML = '<option value="" disabled selected>How long will you stay?</option>';
@@ -1610,6 +1628,19 @@
         const durationVal = document.getElementById('booking-duration').value;
         const timeArea = document.getElementById('time-selection-area');
         const nextBtn = document.getElementById('btn-next-3');
+        const dayOfWeek = getDayOfWeekFromYmd(dateVal);
+
+        if (dayOfWeek === 1) {
+            timeArea.style.display = 'none';
+            nextBtn.disabled = true;
+            bookingData.date = null;
+            bookingData.duration = null;
+            bookingData.time = null;
+            openAppModal('We are closed on Mondays. Please choose another date.', {
+                title: 'Closed on Monday'
+            });
+            return;
+        }
 
         // 🌟 需求1: 选择了 3 小时及以上，立刻阻断流程并提示打电话
         if (durationVal && parseInt(durationVal) >= 3) {
