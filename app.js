@@ -68,6 +68,18 @@ const GHL_PAYMENT_WORKFLOW_ID = String(process.env.GHL_PAYMENT_WORKFLOW_ID || ''
 const GHL_REQUEST_TIMEOUT_MS = Number(process.env.GHL_REQUEST_TIMEOUT_MS || 8000);
 const GHL_ENABLED = Boolean(GHL_PRIVATE_TOKEN && GHL_LOCATION_ID && GHL_BOOKING_WORKFLOW_ID);
 
+const TWILIO_ACCOUNT_SID = String(process.env.TWILIO_ACCOUNT_SID || '').trim();
+const TWILIO_AUTH_TOKEN = String(process.env.TWILIO_AUTH_TOKEN || '').trim();
+const TWILIO_FROM_NUMBER = String(process.env.TWILIO_FROM_NUMBER || '').trim();
+const TWILIO_SUPPORT_PHONE = String(process.env.TWILIO_SUPPORT_PHONE || '+16138671383').trim();
+const TWILIO_REQUEST_TIMEOUT_MS = Math.max(2000, Number(process.env.TWILIO_REQUEST_TIMEOUT_MS || 8000));
+const TWILIO_ENABLED = Boolean(TWILIO_ACCOUNT_SID && TWILIO_AUTH_TOKEN && TWILIO_FROM_NUMBER);
+const TWILIO_CONFIG_ISSUES = [
+    TWILIO_ACCOUNT_SID ? '' : 'missing TWILIO_ACCOUNT_SID',
+    TWILIO_AUTH_TOKEN ? '' : 'missing TWILIO_AUTH_TOKEN',
+    TWILIO_FROM_NUMBER ? '' : 'missing TWILIO_FROM_NUMBER'
+].filter(Boolean);
+
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || '').trim();
 const GOOGLE_CLIENT_SECRET = String(process.env.GOOGLE_CLIENT_SECRET || '').trim();
 const GOOGLE_REFRESH_TOKEN = String(process.env.GOOGLE_REFRESH_TOKEN || '').trim();
@@ -85,7 +97,7 @@ const GOOGLE_CALENDAR_CONFIG_ISSUES = [
 
 const PAYMENT_CURRENCY = String(process.env.PAYMENT_CURRENCY || 'CAD').trim().toUpperCase();
 const PAYMENT_PENDING_HOLD_MINUTES = Math.max(1, Number(process.env.PAYMENT_PENDING_HOLD_MINUTES || 15));
-const PRIVATE_EVENT_PRICE = Math.max(0, Number(process.env.PRIVATE_EVENT_PRICE || 1000));
+const PRIVATE_EVENT_PRICE = Math.max(0, Number(process.env.PRIVATE_EVENT_PRICE || 400));
 const PRIVATE_EVENT_PLACEHOLDER = 'N/A';
 const PRIVATE_EVENT_PLACEHOLDER_PHONE_PREFIX = 'PRIVATE-EVENT';
 const PRIVATE_EVENT_PLACEHOLDER_NAME = 'Private Event Request';
@@ -751,6 +763,97 @@ async function safeReadJson(response) {
     } catch (err) {
         return { raw: text };
     }
+}
+
+function formatSmsBookingTimeLabel(date, time) {
+    const safeDate = String(date || '').trim() || 'N/A';
+    const safeTime = String(time || '').trim() || 'N/A';
+    return `${safeDate} ${safeTime}`.trim();
+}
+
+function buildTwilioPaidMessage({ booking, totalCents }) {
+    const bookingId = Number(booking?.id || 0);
+    const customerName = String(booking?.name || '').trim() || 'Guest';
+    const room = String(booking?.room || '').trim() || 'Room';
+    const durationRaw = String(booking?.duration || '').trim();
+    const durationNumber = Number(durationRaw);
+    const durationText = Number.isFinite(durationNumber) && durationNumber > 0
+        ? `${durationRaw} hour${durationNumber > 1 ? 's' : ''}`
+        : (durationRaw || 'your reserved duration');
+    const whenLabel = formatSmsBookingTimeLabel(booking?.date, booking?.time);
+
+    return `Hi ${customerName}! Thank you for choosing 1383 Karaoke Bar. Your reservation is confirmed. Booking ID: #${bookingId}. ${durationText} in the ${room} on ${whenLabel}. We look forward to welcoming you!`;
+}
+
+function normalizePhoneOrEmpty(rawPhone) {
+    const normalized = normalizeAndValidatePhoneNumber(rawPhone);
+    return normalized.ok ? normalized.e164 : '';
+}
+
+function buildTwilioRecipients(customerPhone) {
+    const recipients = new Set();
+    const customer = normalizePhoneOrEmpty(customerPhone);
+    const support = normalizePhoneOrEmpty(TWILIO_SUPPORT_PHONE);
+    if (customer) recipients.add(customer);
+    if (support) recipients.add(support);
+    return Array.from(recipients);
+}
+
+async function sendTwilioSms(to, body) {
+    const endpoint = `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(TWILIO_ACCOUNT_SID)}/Messages.json`;
+    const form = new URLSearchParams();
+    form.set('To', String(to || '').trim());
+    form.set('From', TWILIO_FROM_NUMBER);
+    form.set('Body', String(body || '').trim().slice(0, 1200));
+    const basicAuth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString('base64');
+
+    const response = await fetchWithTimeout(endpoint, {
+        method: 'POST',
+        headers: {
+            Authorization: `Basic ${basicAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: form.toString()
+    }, TWILIO_REQUEST_TIMEOUT_MS);
+    const payload = await safeReadJson(response);
+    if (!response.ok) {
+        throw new Error(`Twilio send failed (${response.status}): ${compactJson(JSON.stringify(payload))}`);
+    }
+    return {
+        sid: String(payload.sid || '').trim(),
+        to: String(payload.to || to || '').trim()
+    };
+}
+
+async function sendPaidBookingSmsNotifications({ booking, totalCents }) {
+    if (!TWILIO_ENABLED) {
+        return { sent: false, reason: `Twilio is not configured (${TWILIO_CONFIG_ISSUES.join(', ') || 'unknown issue'}).`, recipients: [] };
+    }
+
+    const recipients = buildTwilioRecipients(booking?.phone || '');
+    if (!recipients.length) {
+        return { sent: false, reason: 'No valid recipient phone numbers for Twilio SMS.', recipients: [] };
+    }
+
+    const body = buildTwilioPaidMessage({ booking, totalCents });
+    const deliveries = [];
+    const failures = [];
+
+    for (const to of recipients) {
+        try {
+            const result = await sendTwilioSms(to, body);
+            deliveries.push({ to: result.to || to, sid: result.sid });
+        } catch (err) {
+            failures.push({ to, error: err.message });
+        }
+    }
+
+    return {
+        sent: deliveries.length > 0,
+        recipients,
+        deliveries,
+        failures
+    };
 }
 
 function getBusinessYmdHmFromDate(dateObj) {
@@ -1833,6 +1936,17 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
             totalCents: quote.totalCents
         });
 
+        let twilioNotification = { sent: false, reason: '', recipients: [], deliveries: [], failures: [] };
+        try {
+            twilioNotification = await sendPaidBookingSmsNotifications({
+                booking,
+                totalCents: quote.totalCents
+            });
+        } catch (twilioErr) {
+            twilioNotification = { sent: false, reason: twilioErr.message, recipients: [], deliveries: [], failures: [] };
+            console.error('Twilio payment confirmation SMS failed:', twilioErr.message);
+        }
+
         let paymentNotification = { sent: false, reason: '' };
         try {
             paymentNotification = await triggerPaymentConfirmedMessageInGhl({
@@ -1855,7 +1969,8 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
             bookingId: booking.id,
             paymentStatus: 'paid',
             bookingType: String(booking.booking_type || 'standard'),
-            paymentNotification
+            paymentNotification,
+            twilioNotification
         });
     } catch (err) {
         console.error('Failed to confirm payment:', err.message);
@@ -2308,8 +2423,12 @@ app.listen(PORT, () => {
     console.log(`🕒 BUSINESS_TIME_ZONE: ${BUSINESS_TIME_ZONE}`);
     console.log(`🛡️ CAPTCHA ${CAPTCHA_ENABLED ? 'enabled' : 'disabled'} (${CAPTCHA_PROVIDER})`);
     console.log(`📨 GoHighLevel workflow notification ${GHL_ENABLED ? 'enabled' : 'disabled'}`);
+    console.log(`📲 Twilio SMS ${TWILIO_ENABLED ? `enabled (support notify: ${TWILIO_SUPPORT_PHONE})` : 'disabled'}`);
     console.log(`📅 Google Calendar sync ${GOOGLE_CALENDAR_ENABLED ? `enabled (${Math.round(GOOGLE_CALENDAR_SYNC_INTERVAL_MS / 60000)} min interval, calendar: ${GOOGLE_CALENDAR_ID})` : 'disabled'}`);
     console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? `enabled:${STRIPE_MODE}` : 'disabled'})`);
+    if (!TWILIO_ENABLED && TWILIO_CONFIG_ISSUES.length) {
+        console.warn(`⚠️ Twilio config issue: ${TWILIO_CONFIG_ISSUES.join(', ')}`);
+    }
     if (!GOOGLE_CALENDAR_ENABLED && GOOGLE_CALENDAR_CONFIG_ISSUES.length) {
         console.warn(`⚠️ Google Calendar config issue: ${GOOGLE_CALENDAR_CONFIG_ISSUES.join(', ')}`);
     }

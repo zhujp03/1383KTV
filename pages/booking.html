@@ -553,7 +553,7 @@
                 <span class="room-tier-label">Private Event</span>
                 <div class="card-header">
                     <h3>Private Event</h3>
-                    <span class="price">$1000/day</span>
+                    <span class="price">$400/day</span>
                 </div>
                 <p class="capacity">🔒 Full-day private booking</p>
                 <p class="room-desc">Reserve the room for the entire business day.</p>
@@ -1500,8 +1500,10 @@
             }
 
             goToStep(5, { skipRelease: true });
+            const quoteCurrency = result?.paymentQuote?.currency || securityConfig?.payment?.currency || 'CAD';
+            const quoteTotal = Number(result?.paymentQuote?.total || 400);
             openAppModal(
-                'Private Event selected. Please pay $1,000 now to secure your full-day private booking.',
+                `Private Event selected. Please pay ${formatMoney(quoteTotal, quoteCurrency)} now to secure your full-day private booking.`,
                 {
                     title: 'Private Event Payment',
                     buttonText: 'Pay Now',
