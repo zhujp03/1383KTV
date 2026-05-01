@@ -771,18 +771,78 @@ function formatSmsBookingTimeLabel(date, time) {
     return `${safeDate} ${safeTime}`.trim();
 }
 
+function formatSmsCurrency(amount) {
+    const rounded = roundCurrency(Number(amount || 0));
+    const fixed = rounded.toFixed(2);
+    return fixed.endsWith('.00') ? `$${fixed.slice(0, -3)}` : `$${fixed}`;
+}
+
+function parseBookingLocalDateTime(dateStr, timeStr) {
+    const safeDate = String(dateStr || '').trim();
+    const safeTime = String(timeStr || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(safeDate) || !safeTime) return null;
+
+    let hour = 0;
+    let minute = 0;
+    if (/^\d{1,2}:\d{2}$/.test(safeTime)) {
+        const parts = safeTime.split(':').map(Number);
+        hour = Number(parts[0]);
+        minute = Number(parts[1]);
+    } else {
+        const match = safeTime.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+        if (!match) return null;
+        hour = Number(match[1]);
+        minute = Number(match[2]);
+        const ampm = String(match[3] || '').toUpperCase();
+        if (ampm === 'PM' && hour !== 12) hour += 12;
+        if (ampm === 'AM' && hour === 12) hour = 0;
+    }
+
+    if (!Number.isFinite(hour) || !Number.isFinite(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+        return null;
+    }
+
+    const hh = String(hour).padStart(2, '0');
+    const mm = String(minute).padStart(2, '0');
+    const dateObj = new Date(`${safeDate}T${hh}:${mm}:00`);
+    return Number.isNaN(dateObj.getTime()) ? null : dateObj;
+}
+
+function buildReservationWindowText(dateStr, timeStr, durationRaw) {
+    const startAt = parseBookingLocalDateTime(dateStr, timeStr);
+    const durationHours = Number(durationRaw);
+    if (!startAt || !Number.isFinite(durationHours) || durationHours <= 0) {
+        return formatSmsBookingTimeLabel(dateStr, timeStr);
+    }
+
+    const endAt = new Date(startAt.getTime() + (durationHours * 60 * 60 * 1000));
+    const dateLabel = new Intl.DateTimeFormat('en-US', {
+        month: 'long',
+        day: 'numeric'
+    }).format(startAt);
+    const timeFormatter = new Intl.DateTimeFormat('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    });
+    const startLabel = timeFormatter.format(startAt);
+    const endLabel = timeFormatter.format(endAt);
+    return `${dateLabel} from ${startLabel} to ${endLabel}`;
+}
+
 function buildTwilioPaidMessage({ booking, totalCents }) {
     const bookingId = Number(booking?.id || 0);
     const customerName = String(booking?.name || '').trim() || 'Guest';
     const room = String(booking?.room || '').trim() || 'Room';
-    const durationRaw = String(booking?.duration || '').trim();
-    const durationNumber = Number(durationRaw);
-    const durationText = Number.isFinite(durationNumber) && durationNumber > 0
-        ? `${durationRaw} hour${durationNumber > 1 ? 's' : ''}`
-        : (durationRaw || 'your reserved duration');
-    const whenLabel = formatSmsBookingTimeLabel(booking?.date, booking?.time);
+    const bookingType = String(booking?.booking_type || '').trim().toLowerCase();
+    const isPrivateEvent = bookingType === 'private_event';
+    const roomRate = isPrivateEvent ? PRIVATE_EVENT_PRICE : getRoomFirstHourPrice(room);
+    const roomRateLabel = `${formatSmsCurrency(roomRate)}${isPrivateEvent ? '/day' : '/hr'}`;
+    const depositAmount = roundCurrency(Number(totalCents || 0) / 100);
+    const depositLabel = formatSmsCurrency(depositAmount);
+    const whenLabel = buildReservationWindowText(booking?.date, booking?.time, booking?.duration);
 
-    return `Hi ${customerName}! Thank you for choosing 1383 Karaoke Bar. Your reservation is confirmed. Booking ID: #${bookingId}. ${durationText} in the ${room} on ${whenLabel}. We look forward to welcoming you!`;
+    return `Hi ${customerName}, this is 1383 Karaoke Bar. Your reservation is confirmed. Booking ID: #${bookingId}. ${room} at rate: ${roomRateLabel} on ${whenLabel}.\n\nYour ${depositLabel} deposit has been received. Rescheduling is available with at least 24 hours' notice (subject to availability); changes within 24 hours are not permitted.\n\nAn 18% service charge applies. Outside food & drinks are not allowed.\n\nPlease note: your booking starts on time. If we do not hear from you within 30 minutes of your reservation, the room may be released.\n\nFor assistance: 613-867-1383`;
 }
 
 function normalizePhoneOrEmpty(rawPhone) {
