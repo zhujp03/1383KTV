@@ -107,6 +107,16 @@ const ROOM_FIRST_HOUR_PRICE = {
     'VIP Room': Number(process.env.ROOM_PRICE_VIP || 85),
     'Large Room': Number(process.env.ROOM_PRICE_VIP || 85)
 };
+const DRINK_PACKAGE_CATALOG = {
+    flying_shot: { name: 'Flying Shot', price: 35 },
+    sober_sober: { name: 'Sober Sober', price: 88 },
+    kpop_style: { name: 'K-Pop Style', price: 98 },
+    little_tipsy: { name: 'Little Tipsy', price: 138 },
+    party_tonight: { name: 'Party Tonight', price: 238 },
+    boss_package: { name: 'Boss Package', price: 338 },
+    party_tonight_upgrade_grey_goose: { name: 'Party Tonight Upgrade to Grey Goose', price: 45 }
+};
+const DRINK_PACKAGE_KEYS = new Set(Object.keys(DRINK_PACKAGE_CATALOG));
 
 const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || '').trim();
 const STRIPE_PUBLISHABLE_KEY = String(process.env.STRIPE_PUBLISHABLE_KEY || '').trim();
@@ -250,6 +260,8 @@ const db = new sqlite3.Database(KTV_DB_PATH, (err) => {
             duration TEXT NOT NULL,
             name TEXT NOT NULL,
             phone TEXT NOT NULL,
+            package_selection_json TEXT DEFAULT '[]',
+            package_total_cents INTEGER DEFAULT 0,
             booking_type TEXT DEFAULT 'standard',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`, () => {
@@ -263,6 +275,8 @@ const db = new sqlite3.Database(KTV_DB_PATH, (err) => {
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_reference TEXT DEFAULT ''`, 'bookings.payment_reference');
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN payment_cancel_token TEXT DEFAULT ''`, 'bookings.payment_cancel_token');
             runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN booking_type TEXT DEFAULT 'standard'`, 'bookings.booking_type');
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN package_selection_json TEXT DEFAULT '[]'`, 'bookings.package_selection_json');
+            runAlterTableIgnoreDuplicate(db, `ALTER TABLE bookings ADD COLUMN package_total_cents INTEGER DEFAULT 0`, 'bookings.package_total_cents');
         });
     }
 });
@@ -659,11 +673,57 @@ function getRoomFirstHourPrice(room) {
     return Number(ROOM_FIRST_HOUR_PRICE[safeRoom] || ROOM_FIRST_HOUR_PRICE['Small Room'] || 0);
 }
 
+function normalizeSelectedDrinkPackages(rawSelection) {
+    let source = rawSelection;
+    if (typeof source === 'string') {
+        const trimmed = source.trim();
+        if (!trimmed) source = [];
+        else {
+            try {
+                const parsed = JSON.parse(trimmed);
+                source = Array.isArray(parsed) ? parsed : trimmed.split(',').map((item) => item.trim());
+            } catch (_err) {
+                source = trimmed.split(',').map((item) => item.trim());
+            }
+        }
+    }
+    if (!Array.isArray(source)) source = [];
+
+    const unique = new Set();
+    const normalized = [];
+    for (const item of source) {
+        const key = String(item || '').trim();
+        if (!key || !DRINK_PACKAGE_KEYS.has(key) || unique.has(key)) continue;
+        unique.add(key);
+        normalized.push(key);
+    }
+    return normalized;
+}
+
+function buildDrinkPackageItems(selectedPackages) {
+    const normalized = normalizeSelectedDrinkPackages(selectedPackages);
+    return normalized.map((key) => {
+        const pkg = DRINK_PACKAGE_CATALOG[key];
+        const price = Number(pkg?.price || 0);
+        return {
+            key,
+            name: String(pkg?.name || key),
+            price: roundCurrency(price),
+            cents: toCents(price)
+        };
+    });
+}
+
 function calculateBookingPaymentQuote(booking) {
     const bookingType = String(booking?.booking_type || '').trim().toLowerCase();
     const isPrivateEvent = bookingType === 'private_event';
+    const packageItems = isPrivateEvent
+        ? []
+        : buildDrinkPackageItems(booking?.package_selection_json ?? booking?.selectedPackages ?? booking?.selected_packages ?? []);
+    const packageTotalCents = packageItems.reduce((sum, item) => sum + Number(item.cents || 0), 0);
+    const packageTotal = roundCurrency(packageTotalCents / 100);
     const firstHourPrice = isPrivateEvent ? PRIVATE_EVENT_PRICE : getRoomFirstHourPrice(booking.room);
-    const subtotal = roundCurrency(firstHourPrice);
+    const subtotal = roundCurrency(firstHourPrice + packageTotal);
     const total = subtotal;
     const totalCents = toCents(total);
     const safeRoomLabel = isPrivateEvent ? 'Private Event (Full Day)' : String(booking.room || 'Room');
@@ -673,6 +733,9 @@ function calculateBookingPaymentQuote(booking) {
     return {
         currency: PAYMENT_CURRENCY,
         roomFirstHourPrice: firstHourPrice,
+        packageItems,
+        packageTotal,
+        packageTotalCents,
         subtotal,
         total,
         totalCents,
@@ -1369,7 +1432,13 @@ function validateBookingRequest(rawData) {
     const duration = Number(booking.duration);
     const partySize = Number(booking.partySize);
     const name = String(booking.name || '').trim().replace(/\s+/g, ' ');
-    const upsellInterest = String(booking.upsellInterest || '').trim().slice(0, 80);
+    const selectedPackages = normalizeSelectedDrinkPackages(
+        booking.selectedPackages ?? booking.packageSelections ?? booking.package_selection_json ?? []
+    );
+    const selectedPackageNames = selectedPackages
+        .map((key) => DRINK_PACKAGE_CATALOG[key]?.name || '')
+        .filter(Boolean);
+    const packageSummary = selectedPackageNames.join(', ').slice(0, 200);
 
     if (!room || !date || !time || !name || !Number.isFinite(duration) || !Number.isFinite(partySize)) {
         return { ok: false, error: 'Missing required booking fields.' };
@@ -1416,7 +1485,10 @@ function validateBookingRequest(rawData) {
             duration,
             name,
             phone: phoneCheck.e164,
-            upsellInterest
+            selectedPackages,
+            packageSelectionJson: JSON.stringify(selectedPackages),
+            packageTotalCents: selectedPackages.reduce((sum, key) => sum + toCents(DRINK_PACKAGE_CATALOG[key]?.price || 0), 0),
+            upsellInterest: packageSummary
         }
     };
 }
@@ -1633,9 +1705,10 @@ app.post('/api/book/private-event', bookingIpRateLimiter, enforceIpBookingCooldo
     const nowYmdHms = getBusinessDateTimeYmdHms();
     const sql = `INSERT INTO bookings (
                     room, partySize, date, time, duration, name, phone,
+                    package_selection_json, package_total_cents,
                     deposit, payment_status, payment_method, payment_amount_cents, payment_reference,
                     payment_cancel_token, booking_type, created_at
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, 'private_event', ?)`;
+                 ) VALUES (?, ?, ?, ?, ?, ?, ?, '[]', 0, 'No', 'unpaid', '', 0, '', ?, 'private_event', ?)`;
 
     try {
         const runResult = await dbRun(sql, [
@@ -1660,6 +1733,7 @@ app.post('/api/book/private-event', bookingIpRateLimiter, enforceIpBookingCooldo
             duration: PRIVATE_EVENT_PLACEHOLDER,
             name: PRIVATE_EVENT_PLACEHOLDER_NAME,
             phone: placeholderPhone,
+            package_selection_json: '[]',
             booking_type: 'private_event'
         });
 
@@ -1701,8 +1775,13 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
     }
 
     const cancelToken = generatePaymentCancelToken();
-    const sql = `INSERT INTO bookings (room, partySize, date, time, duration, name, phone, deposit, payment_status, payment_method, payment_amount_cents, payment_reference, payment_cancel_token, booking_type, created_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, 'standard', ?)`;
+    const sql = `INSERT INTO bookings (
+                    room, partySize, date, time, duration, name, phone,
+                    package_selection_json, package_total_cents,
+                    deposit, payment_status, payment_method, payment_amount_cents, payment_reference,
+                    payment_cancel_token, booking_type, created_at
+                 )
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, 'standard', ?)`;
 
     try {
         const runResult = await dbRun(sql, [
@@ -1713,6 +1792,8 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             bookingData.duration,
             bookingData.name,
             bookingData.phone,
+            bookingData.packageSelectionJson,
+            bookingData.packageTotalCents,
             cancelToken,
             getBusinessDateTimeYmdHms()
         ]);
@@ -1726,7 +1807,8 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             time: bookingData.time,
             duration: bookingData.duration,
             name: bookingData.name,
-            phone: bookingData.phone
+            phone: bookingData.phone,
+            package_selection_json: bookingData.packageSelectionJson
         });
 
         let notification = { sent: false, reason: '' };

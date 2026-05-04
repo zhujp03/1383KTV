@@ -151,9 +151,14 @@
         }
         .upsell-social-proof {
             margin: 0 0 12px 0;
-            color: #c4dafd;
+            color: rgba(156, 163, 175, 0.5);
             font-size: 0.9rem;
-            font-weight: 600;
+            font-weight: 400;
+        }
+        .upsell-optional-note {
+            color: rgba(156, 163, 175, 0.4);
+            font-size: 0.86rem;
+            font-weight: 400;
         }
         .upsell-grid {
             display: grid;
@@ -219,6 +224,24 @@
             color: var(--text-muted);
             line-height: 1.4;
             font-size: 0.84rem;
+        }
+        .upsell-suboption {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed rgba(156, 163, 175, 0.25);
+        }
+        .upsell-upgrade-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: var(--text-muted);
+            font-size: 0.83rem;
+        }
+        .upsell-upgrade-option input {
+            accent-color: var(--primary-blue);
+        }
+        .upsell-upgrade-option.disabled {
+            opacity: 0.45;
         }
         .upsell-hint {
             margin: 11px 0 0 0;
@@ -563,34 +586,65 @@
         </div>
 
         <div class="upsell-section">
-            <h3 class="upsell-title">Enhance Your Experience</h3>
-            <p class="upsell-social-proof">Most groups choose a package for better value.</p>
+            <h3 class="upsell-title">Enhance Your Visit</h3>
+            <p class="upsell-social-proof">You can choose none, one, or multiple packages <span class="upsell-optional-note">(optional)</span>.</p>
 
             <div class="upsell-grid">
-                <button type="button" class="upsell-card" onclick="selectUpsell('Drink Package', this)">
-                    <div class="upsell-label">
-                        <span>🍺 Drink Package</span>
-                    </div>
-                    <p class="upsell-desc">Save more when you pre-order drinks.</p>
+                <button type="button" class="upsell-card drink-package-card" data-drink-package-key="flying_shot" onclick="toggleDrinkPackage('flying_shot')">
+                    <div class="upsell-label"><span>Flying Shot</span><span>$35</span></div>
+                    <p class="upsell-desc">One Rack (6 Shots)</p>
                 </button>
-
-                <button type="button" class="upsell-card" onclick="selectUpsell('Bottle Service', this)">
-                    <div class="upsell-label">
-                        <span>🥃 Bottle Service</span>
-                    </div>
-                    <p class="upsell-desc">Upgrade your night with premium spirits.</p>
+                <button type="button" class="upsell-card drink-package-card" data-drink-package-key="sober_sober" onclick="toggleDrinkPackage('sober_sober')">
+                    <div class="upsell-label"><span>Sober Sober</span><span>$88</span></div>
+                    <p class="upsell-desc">Beer x6</p>
+                    <p class="upsell-desc">Fruit Platter x 1</p>
+                    <p class="upsell-desc">Fries x 1</p>
+                    <p class="upsell-desc">Chicken Nuggets x 1</p>
                 </button>
-
-                <button type="button" class="upsell-card recommended" onclick="selectUpsell('Party Package', this)">
-                    <div class="upsell-label">
-                        <span>🎉 Party Package</span>
-                        <span class="upsell-badge">Recommended</span>
+                <button type="button" class="upsell-card drink-package-card" data-drink-package-key="kpop_style" onclick="toggleDrinkPackage('kpop_style')">
+                    <div class="upsell-label"><span>K-Pop Style</span><span>$98</span></div>
+                    <p class="upsell-desc">Beer x 4</p>
+                    <p class="upsell-desc">Korean Soju x 1</p>
+                    <p class="upsell-desc">Fruit Platter x 1</p>
+                    <p class="upsell-desc">Fries x 1</p>
+                </button>
+                <button type="button" class="upsell-card drink-package-card" data-drink-package-key="little_tipsy" onclick="toggleDrinkPackage('little_tipsy')">
+                    <div class="upsell-label"><span>Little Tipsy</span><span>$138</span></div>
+                    <p class="upsell-desc">Beer x 12</p>
+                    <p class="upsell-desc">Fruit Platter x 1</p>
+                    <p class="upsell-desc">Fries x 1</p>
+                    <p class="upsell-desc">Chicken Wings x 1</p>
+                </button>
+                <div class="upsell-card drink-package-card" data-drink-package-key="party_tonight" onclick="toggleDrinkPackage('party_tonight')">
+                    <div class="upsell-label"><span>Party Tonight</span><span>$238</span></div>
+                    <p class="upsell-desc">Choice of Bottle x 1</p>
+                    <p class="upsell-desc">Absolut Vodka / Johnnie Walker Red Label / 1800 Tequila</p>
+                    <p class="upsell-desc">Juice x 1, Pop x 4, Beer x 6</p>
+                    <p class="upsell-desc">Fruit Platter x 1, Fries x 1, Chicken Wings x 1</p>
+                    <div class="upsell-suboption">
+                        <label class="upsell-upgrade-option" id="party-tonight-upgrade-label">
+                            <input
+                                type="checkbox"
+                                id="party-tonight-upgrade-toggle"
+                                onclick="togglePartyTonightUpgrade(event)"
+                            >
+                            <span>Upgrade to Grey Goose (+$45)</span>
+                        </label>
                     </div>
-                    <p class="upsell-desc">Best value for groups and celebrations.</p>
+                </div>
+                <button type="button" class="upsell-card drink-package-card" data-drink-package-key="boss_package" onclick="toggleDrinkPackage('boss_package')">
+                    <div class="upsell-label"><span>Boss Package</span><span>$338</span></div>
+                    <p class="upsell-desc">Casamigos Tequila Bottle</p>
+                    <p class="upsell-desc">Juice x 1</p>
+                    <p class="upsell-desc">Pop x 1</p>
+                    <p class="upsell-desc">Beer x 6</p>
+                    <p class="upsell-desc">Fruit Platter x 1</p>
+                    <p class="upsell-desc">Fries x 1</p>
+                    <p class="upsell-desc">Chicken Wings x 1</p>
                 </button>
             </div>
 
-            <p class="upsell-hint">Overview of what we offers for packages</p>
+            <p class="upsell-hint">Selected package prices are added directly to your checkout total.</p>
         </div>
 
         <div class="actions">
@@ -619,66 +673,6 @@
         <p class="step-subtitle">When would you like to sing?</p>
         <p class="step-subtitle" style="font-size: 0.85rem; margin-top:-30px;">For Friday and Saturday minimum 2 hours reservation</p>
         <p id="upsell-preview-line" class="step-subtitle upsell-preview-line" style="display: none;"></p>
-
-        <div class="service-menu-section">
-            <h3>Bottle Service & Drink Packages</h3>
-            <p class="service-menu-note">Current items from our menu images in menu_pic. Prices are listed before tax/HST; service charge will apply.</p>
-            <p class="service-menu-note" style="margin-top: -2px;">Most groups choose a package for better value.</p>
-
-            <details class="service-detail">
-                <summary>Package Levels (No-price Preview)</summary>
-                <ul class="service-price-list">
-                    <li><span>Basic Package</span><span class="service-item-price">Room + basic drinks</span></li>
-                    <li><span>Party Package ⭐</span><span class="service-item-price">Room + drinks + sharing snacks</span></li>
-                    <li><span>Premium Package 👑</span><span class="service-item-price">Premium drinks + priority service</span></li>
-                </ul>
-            </details>
-
-            <details class="service-detail">
-                <summary>Standard Bottle</summary>
-                <ul class="service-price-list">
-                    <li><span>Soju (360 mL)</span><span class="service-item-price">$28</span></li>
-                    <li><span>Soho Lychee Liqueur (750 mL)</span><span class="service-item-price">$128</span></li>
-                    <li><span>Absolut Vodka (750 mL)</span><span class="service-item-price">$128</span></li>
-                    <li><span>Johnnie Walker Red Label (750 mL / 1.14 L)</span><span class="service-item-price">$128 / $178</span></li>
-                    <li><span>Bombay Sapphire Gin (750 mL / 1.14 L)</span><span class="service-item-price">$128 / $178</span></li>
-                    <li><span>Captain Morgan Spiced Rum (750 mL)</span><span class="service-item-price">$128</span></li>
-                    <li><span>Bacardi White Rum (1.14 L)</span><span class="service-item-price">$158</span></li>
-                    <li><span>1800 Tequila (750 mL)</span><span class="service-item-price">$138</span></li>
-                </ul>
-            </details>
-
-            <details class="service-detail">
-                <summary>Premium Bottles / Wine</summary>
-                <ul class="service-price-list">
-                    <li><span>Grey Goose Vodka (750 mL)</span><span class="service-item-price">$178</span></li>
-                    <li><span>Johnnie Walker Black Label (750 mL)</span><span class="service-item-price">$198</span></li>
-                    <li><span>Hennessy V.S. (750 mL)</span><span class="service-item-price">$218</span></li>
-                    <li><span>Casamigos Tequila (750 mL)</span><span class="service-item-price">$288</span></li>
-                    <li><span>Johnnie Walker Blue Label (750 mL)</span><span class="service-item-price">$808</span></li>
-                    <li><span>Armand de Brignac Champagne</span><span class="service-item-price">$808</span></li>
-                    <li><span>House White Wine</span><span class="service-item-price">$68</span></li>
-                    <li><span>House Red Wine</span><span class="service-item-price">$68</span></li>
-                </ul>
-            </details>
-
-            <details class="service-detail">
-                <summary>Drink Packages</summary>
-                <ul class="service-price-list">
-                    <li><span>Flying Shot (One Rack, 6 shots)</span><span class="service-item-price">$35</span></li>
-                    <li><span>Sober Sober (Beer x6 + snacks)</span><span class="service-item-price">$88</span></li>
-                    <li><span>K-Pop Style (Beer x4 + Korean Soju x1)</span><span class="service-item-price">$98</span></li>
-                    <li><span>Little Tipsy (Beer x12 + snacks)</span><span class="service-item-price">$138</span></li>
-                    <li><span>Party Tonight (Choice of bottle)</span><span class="service-item-price">$238</span></li>
-                    <li><span>Boss Package (Casamigos bottle + snacks)</span><span class="service-item-price">$338</span></li>
-                    <li><span>Party Tonight upgrade to Grey Goose</span><span class="service-item-price">+$45</span></li>
-                </ul>
-            </details>
-
-            <div class="service-link-row">
-                <a href="homeindex.html#menus">View full menu photos →</a>
-            </div>
-        </div>
 
         <div class="form-group">
             <label for="booking-date">1. Select Date</label>
@@ -753,7 +747,7 @@
 
         <div class="service-menu-section">
             <h3>Deposit Summary</h3>
-            <p class="service-menu-note" id="payment-summary-note">Deposit amount = first-hour room price only.</p>
+            <p class="service-menu-note" id="payment-summary-note">Deposit amount = first-hour room price + selected drinking packages.</p>
             <ul class="service-price-list" id="payment-breakdown-list">
                 <li><span>Room (first hour)</span><span class="service-item-price">-</span></li>
                 <li><span><strong>Total deposit due now</strong></span><span class="service-item-price" id="payment-total-amount">$0.00</span></li>
@@ -800,7 +794,7 @@
         date: null,
         time: null,
         duration: null,
-        upsellInterest: '',
+        selectedPackages: [],
         paymentStatus: 'unpaid',
         paymentQuote: null,
         paymentCancelToken: ''
@@ -856,6 +850,15 @@
     const PRIVATE_EVENT_PLACEHOLDER = 'N/A';
     const PRIVATE_EVENT_ROOM = 'Small Room';
     const PRIVATE_EVENT_PLACEHOLDER_NAME = 'Private Event Request';
+    const DRINK_PACKAGE_CATALOG = {
+        flying_shot: { name: 'Flying Shot', price: 35 },
+        sober_sober: { name: 'Sober Sober', price: 88 },
+        kpop_style: { name: 'K-Pop Style', price: 98 },
+        little_tipsy: { name: 'Little Tipsy', price: 138 },
+        party_tonight: { name: 'Party Tonight', price: 238 },
+        boss_package: { name: 'Boss Package', price: 338 },
+        party_tonight_upgrade_grey_goose: { name: 'Grey Goose Upgrade', price: 45 }
+    };
 
     function getBusinessTimeZone() {
         return String(securityConfig.businessTimeZone || 'America/New_York').trim() || 'America/New_York';
@@ -1011,6 +1014,7 @@
         const today = getBusinessTodayYmd();
         document.getElementById('booking-date').setAttribute('min', today);
         applyPreselectedRoomFromQuery();
+        syncDrinkPackageSelectionUI();
         updateUpsellMentions();
         await handlePaymentReturnFromQuery();
     };
@@ -1130,13 +1134,23 @@
         const paymentSummaryNote = document.getElementById('payment-summary-note');
         const currency = quote.currency || (securityConfig.payment && securityConfig.payment.currency) || 'CAD';
         const roomFee = Number(quote.roomFirstHourPrice || 0);
+        const packageItems = Array.isArray(quote.packageItems) ? quote.packageItems : [];
+        const packageTotal = Number(quote.packageTotal || 0);
         const total = Number(quote.total || 0);
         const isPrivateEvent = String(bookingData.bookingType || '').toLowerCase() === 'private_event';
         const lineItemLabel = isPrivateEvent ? 'Private Event (full day)' : 'Room (first hour)';
 
         if (list) {
+            const packageLines = packageItems
+                .map((item) => `<li><span>Package: ${item.name}</span><span class="service-item-price">${formatMoney(item.price, currency)}</span></li>`)
+                .join('');
+            const packageTotalLine = packageItems.length
+                ? `<li><span>Packages subtotal</span><span class="service-item-price">${formatMoney(packageTotal, currency)}</span></li>`
+                : '';
             list.innerHTML = `
                 <li><span>${lineItemLabel}</span><span class="service-item-price">${formatMoney(roomFee, currency)}</span></li>
+                ${packageLines}
+                ${packageTotalLine}
                 <li><span><strong>Total deposit due now</strong></span><span class="service-item-price">${formatMoney(total, currency)}</span></li>
             `;
         }
@@ -1145,7 +1159,7 @@
         if (paymentSummaryNote) {
             paymentSummaryNote.textContent = isPrivateEvent
                 ? 'Deposit amount = full-day private event price.'
-                : 'Deposit amount = first-hour room price only.';
+                : 'Deposit amount = first-hour room price + selected drinking packages.';
         }
     }
 
@@ -1395,31 +1409,89 @@
         updateUpsellMentions();
     }
 
-    function selectUpsell(upsellName, element) {
-        const cards = document.querySelectorAll('.upsell-card');
+    function getSelectedPackageNames() {
+        return (bookingData.selectedPackages || [])
+            .map((key) => DRINK_PACKAGE_CATALOG[key]?.name || '')
+            .filter(Boolean);
+    }
 
-        if (bookingData.upsellInterest === upsellName) {
-            bookingData.upsellInterest = '';
-            cards.forEach(card => card.classList.remove('selected'));
-            updateUpsellMentions();
+    function getSelectedPackagesTotal() {
+        return (bookingData.selectedPackages || []).reduce((sum, key) => {
+            return sum + Number(DRINK_PACKAGE_CATALOG[key]?.price || 0);
+        }, 0);
+    }
+
+    function syncDrinkPackageSelectionUI() {
+        const selectedKeys = new Set(bookingData.selectedPackages || []);
+        document.querySelectorAll('.drink-package-card').forEach((card) => {
+            const key = String(card.dataset.drinkPackageKey || '').trim();
+            if (selectedKeys.has(key)) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
+            }
+        });
+
+        const hasPartyTonight = selectedKeys.has('party_tonight');
+        const hasUpgrade = selectedKeys.has('party_tonight_upgrade_grey_goose');
+        const upgradeToggle = document.getElementById('party-tonight-upgrade-toggle');
+        const upgradeLabel = document.getElementById('party-tonight-upgrade-label');
+        if (upgradeToggle) {
+            upgradeToggle.checked = hasUpgrade;
+            upgradeToggle.disabled = !hasPartyTonight;
+        }
+        if (upgradeLabel) {
+            upgradeLabel.classList.toggle('disabled', !hasPartyTonight);
+        }
+    }
+
+    function toggleDrinkPackage(packageKey) {
+        const key = String(packageKey || '').trim();
+        if (!DRINK_PACKAGE_CATALOG[key]) return;
+        const current = Array.isArray(bookingData.selectedPackages) ? bookingData.selectedPackages : [];
+        const idx = current.indexOf(key);
+        if (idx >= 0) {
+            current.splice(idx, 1);
+            if (key === 'party_tonight') {
+                const upgradeIdx = current.indexOf('party_tonight_upgrade_grey_goose');
+                if (upgradeIdx >= 0) current.splice(upgradeIdx, 1);
+            }
+        } else {
+            current.push(key);
+        }
+        bookingData.selectedPackages = current;
+        syncDrinkPackageSelectionUI();
+        updateUpsellMentions();
+    }
+
+    function togglePartyTonightUpgrade(event) {
+        event.stopPropagation();
+        const current = Array.isArray(bookingData.selectedPackages) ? bookingData.selectedPackages : [];
+        const hasPartyTonight = current.includes('party_tonight');
+        if (!hasPartyTonight) {
+            syncDrinkPackageSelectionUI();
             return;
         }
-
-        bookingData.upsellInterest = upsellName;
-        cards.forEach(card => card.classList.remove('selected'));
-        element.classList.add('selected');
+        const upgradeKey = 'party_tonight_upgrade_grey_goose';
+        const idx = current.indexOf(upgradeKey);
+        if (idx >= 0) current.splice(idx, 1);
+        else current.push(upgradeKey);
+        bookingData.selectedPackages = current;
+        syncDrinkPackageSelectionUI();
         updateUpsellMentions();
     }
 
     function updateUpsellMentions() {
         const previewLine = document.getElementById('upsell-preview-line');
         const summaryLine = document.getElementById('upsell-summary-line');
-        const selectedUpsell = bookingData.upsellInterest;
+        const selectedNames = getSelectedPackageNames();
+        const selectedTotal = getSelectedPackagesTotal();
+        const currency = securityConfig?.payment?.currency || 'CAD';
 
         if (previewLine) {
-            if (selectedUpsell) {
+            if (selectedNames.length) {
                 previewLine.style.display = 'block';
-                previewLine.textContent = `Selected add-on interest: ${selectedUpsell} (we will confirm details with you).`;
+                previewLine.textContent = `Selected drinking packages: ${selectedNames.join(', ')}. Added at checkout: ${formatMoney(selectedTotal, currency)}.`;
             } else {
                 previewLine.style.display = 'none';
                 previewLine.textContent = '';
@@ -1427,9 +1499,9 @@
         }
 
         if (summaryLine) {
-            if (selectedUpsell) {
+            if (selectedNames.length) {
                 summaryLine.style.display = 'block';
-                summaryLine.textContent = `Add-on preference: ${selectedUpsell}`;
+                summaryLine.textContent = `Drinking packages selected: ${selectedNames.join(', ')} (${formatMoney(selectedTotal, currency)}).`;
             } else {
                 summaryLine.style.display = 'none';
                 summaryLine.textContent = '';
@@ -1450,6 +1522,9 @@
 
         document.querySelectorAll('.room-card').forEach(el => el.classList.remove('selected'));
         element.classList.add('selected');
+        bookingData.selectedPackages = [];
+        syncDrinkPackageSelectionUI();
+        updateUpsellMentions();
 
         const nextBtn = document.getElementById('btn-next-1');
         if (nextBtn) {
@@ -1699,12 +1774,24 @@
 
         let allTimeSlots = [];
 
-        if (dayOfWeek === 5 || dayOfWeek === 6) {
+        if (dayOfWeek === 6) {
             allTimeSlots = [
                 "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
                 "17:00", "17:30", "18:00", "18:30", "19:00", "19:30",
                 "20:00", "20:30", "21:00", "21:30", "22:00", "22:30",
                 "23:00", "23:30", "00:00"
+            ];
+        } else if (dayOfWeek === 5) {
+            allTimeSlots = [
+                "18:00", "18:30", "19:00", "19:30", "20:00", "20:30",
+                "21:00", "21:30", "22:00", "22:30", "23:00", "23:30", "00:00"
+            ];
+        } else if (dayOfWeek === 0) {
+            allTimeSlots = [
+                "14:00", "14:30", "15:00", "15:30", "16:00", "16:30",
+                "17:00", "17:30", "18:00", "18:30", "19:00", "19:30",
+                "20:00", "20:30", "21:00", "21:30", "22:00", "22:30",
+                "23:00"
             ];
         } else {
             allTimeSlots = [
@@ -1892,8 +1979,9 @@
                     await refreshPaymentQuote();
                 }
 
-                const upsellFollowUp = bookingData.upsellInterest
-                    ? ` We also noted your interest in ${bookingData.upsellInterest}.`
+                const selectedPackageNames = getSelectedPackageNames();
+                const upsellFollowUp = selectedPackageNames.length
+                    ? ` Selected drinking packages: ${selectedPackageNames.join(', ')}.`
                     : '';
                 openAppModal(
                     `Booking request submitted successfully (Booking #${bookingData.bookingId}).${upsellFollowUp} IMPORTANT: Please continue to pay the deposit now to secure your spot. If payment is not completed, this reservation will be automatically released.`,
