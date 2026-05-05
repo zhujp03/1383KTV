@@ -1686,10 +1686,11 @@
             durationSelect.innerHTML += '<option value="1">1 Hour</option>';
         }
 
-        // 添加其余的选项 (把 3,4,5 合并为了 3+ Hours)
+        // 添加其余选项：3小时可线上预约，超过3小时请电话联系
         durationSelect.innerHTML += `
             <option value="2">2 Hours</option>
-            <option value="3">3+ Hours (Call Us)</option>
+            <option value="3">3 Hours</option>
+            <option value="4">4+ Hours (Call Us)</option>
         `;
 
         // 因为重新生成了选项，清空下方的时间网格并重置状态
@@ -1719,10 +1720,10 @@
             return;
         }
 
-        // 🌟 需求1: 选择了 3 小时及以上，立刻阻断流程并提示打电话
-        if (durationVal && parseInt(durationVal) >= 3) {
+        // 🌟 超过 3 小时（4+）需要电话预约
+        if (durationVal && parseInt(durationVal) > 3) {
             openAppModal(
-                'For bookings of 3 hours or more, please call us at 613-867-1383. Exclusive pricing and packages are available for extended bookings.',
+                'For bookings over 3 hours, please call us at 613-867-1383. Exclusive pricing and packages are available for extended bookings.',
                 { title: 'Please Call Us', buttonText: 'Got it' }
             );
 
@@ -1802,7 +1803,10 @@
 
         allTimeSlots.forEach(time24 => {
             const displayTime = formatTimeForDisplay(time24);
-            const isAvailable = isTimeSlotAvailable(time24, parseInt(bookingData.duration), bookingData.room, currentDayBookings);
+            const durationHours = parseInt(bookingData.duration);
+            const isWithinOperatingWindow = isTimeWithinOperatingWindow(time24, durationHours, dayOfWeek);
+            const isAvailable = isWithinOperatingWindow
+                && isTimeSlotAvailable(time24, durationHours, bookingData.room, currentDayBookings);
 
             const btn = document.createElement('button');
             btn.className = 'dynamic-time-btn';
@@ -1822,6 +1826,18 @@
             }
             container.appendChild(btn);
         });
+    }
+
+    function getClosingHourByDay(dayOfWeek) {
+        // Fri/Sat close at 2:00 AM, others close at 1:00 AM
+        return (dayOfWeek === 5 || dayOfWeek === 6) ? 26 : 25;
+    }
+
+    function isTimeWithinOperatingWindow(proposedTime24, durationHours, dayOfWeek) {
+        if (!Number.isFinite(durationHours) || durationHours <= 0) return false;
+        const startHour = parseTimeToNumber(proposedTime24);
+        const endHour = startHour + durationHours;
+        return endHour <= getClosingHourByDay(dayOfWeek);
     }
 
     // --- 碰撞检测算法 ---

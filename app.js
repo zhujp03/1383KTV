@@ -1517,8 +1517,8 @@ function validateBookingRequest(rawData) {
         return { ok: false, error: 'Invalid booking time format.' };
     }
 
-    if (![1, 2].includes(duration)) {
-        return { ok: false, error: 'Online booking currently supports 1 or 2 hours only.' };
+    if (![1, 2, 3].includes(duration)) {
+        return { ok: false, error: 'Online booking currently supports 1, 2, or 3 hours only.' };
     }
 
     if (partySize < 1 || partySize > 30) {
