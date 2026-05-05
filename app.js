@@ -714,6 +714,64 @@ function buildDrinkPackageItems(selectedPackages) {
     });
 }
 
+function inferPackageKeysFromTotalCents(targetCents) {
+    const target = Number(targetCents || 0);
+    if (!Number.isFinite(target) || target <= 0) return [];
+
+    const keys = Object.keys(DRINK_PACKAGE_CATALOG);
+    const matches = [];
+    const limit = 1 << keys.length;
+
+    for (let mask = 1; mask < limit; mask += 1) {
+        let sum = 0;
+        const combo = [];
+        for (let i = 0; i < keys.length; i += 1) {
+            if ((mask & (1 << i)) === 0) continue;
+            const key = keys[i];
+            sum += toCents(DRINK_PACKAGE_CATALOG[key]?.price || 0);
+            combo.push(key);
+        }
+        if (sum === target) {
+            matches.push(combo);
+        }
+    }
+
+    if (!matches.length) return null;
+    matches.sort((a, b) => {
+        if (a.length !== b.length) return a.length - b.length;
+        return a.join(',').localeCompare(b.join(','));
+    });
+    return matches[0];
+}
+
+function derivePackageKeysForBooking(booking) {
+    const bookingType = String(booking?.booking_type || '').trim().toLowerCase();
+    if (bookingType === 'private_event') return [];
+
+    const storedSelection = normalizeSelectedDrinkPackages(booking?.package_selection_json ?? []);
+    const isPaid = normalizePaymentStatus(booking?.payment_status) === 'paid'
+        || String(booking?.deposit || '').trim().toLowerCase() === 'yes';
+    const paidAmountCents = Number(booking?.payment_amount_cents || 0);
+    const baseDepositCents = toCents(getRoomFirstHourPrice(booking?.room));
+
+    if (isPaid && Number.isFinite(paidAmountCents) && paidAmountCents >= baseDepositCents) {
+        const packageTotalCents = paidAmountCents - baseDepositCents;
+        const inferred = inferPackageKeysFromTotalCents(packageTotalCents);
+        if (Array.isArray(inferred)) return inferred;
+    }
+
+    return storedSelection;
+}
+
+function getPackageSelectionLabelForBooking(booking) {
+    const keys = derivePackageKeysForBooking(booking);
+    if (!keys.length) return 'None';
+    return keys
+        .map((key) => String(DRINK_PACKAGE_CATALOG[key]?.name || '').trim())
+        .filter(Boolean)
+        .join(', ') || 'None';
+}
+
 function calculateBookingPaymentQuote(booking) {
     const bookingType = String(booking?.booking_type || '').trim().toLowerCase();
     const isPrivateEvent = bookingType === 'private_event';
@@ -2263,7 +2321,11 @@ app.get('/api/admin/bookings', checkAdminLogin, (req, res) => {
 
         db.all(listSql, [], (err, rows) => {
             if (err) return res.status(500).json({ error: 'Failed to fetch bookings.' });
-            res.status(200).json({ total: rows.length, data: rows });
+            const data = rows.map((row) => ({
+                ...row,
+                package_selection_label: getPackageSelectionLabelForBooking(row)
+            }));
+            res.status(200).json({ total: data.length, data });
         });
     });
 });

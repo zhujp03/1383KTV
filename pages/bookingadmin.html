@@ -71,6 +71,7 @@
                 <th>Phone</th>
                 <th>Payment Status</th>
                 <th>Paid Amount</th>
+                <th>Drink Package</th>
                 <th>Actions</th>
             </tr>
             </thead>
@@ -447,6 +448,7 @@
                     <td>${b.phone}</td>
                     <td>${statusBadge}</td>
                     <td>$${paidAmount.toFixed(2)}</td>
+                    <td>${b.package_selection_label || 'None'}</td>
                     <td>${actionButtons}</td>
                 `;
                 tbody.appendChild(tr);
