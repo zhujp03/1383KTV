@@ -120,9 +120,11 @@ const DRINK_PACKAGE_KEYS = new Set(Object.keys(DRINK_PACKAGE_CATALOG));
 
 const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || '').trim();
 const STRIPE_PUBLISHABLE_KEY = String(process.env.STRIPE_PUBLISHABLE_KEY || '').trim();
+const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || '').trim();
 const HAS_STRIPE_SECRET_KEY = Boolean(STRIPE_SECRET_KEY);
 const HAS_STRIPE_PUBLISHABLE_KEY = Boolean(STRIPE_PUBLISHABLE_KEY);
 const STRIPE_ENABLED = HAS_STRIPE_SECRET_KEY && HAS_STRIPE_PUBLISHABLE_KEY;
+const STRIPE_WEBHOOK_ENABLED = STRIPE_ENABLED && Boolean(STRIPE_WEBHOOK_SECRET);
 const STRIPE_MODE = STRIPE_ENABLED
     ? (STRIPE_SECRET_KEY.startsWith('sk_test_') ? 'test'
         : STRIPE_SECRET_KEY.startsWith('sk_live_') ? 'live'
@@ -131,6 +133,9 @@ const STRIPE_MODE = STRIPE_ENABLED
 const STRIPE_CONFIG_ISSUES = [
     HAS_STRIPE_SECRET_KEY ? '' : 'missing STRIPE_SECRET_KEY',
     HAS_STRIPE_PUBLISHABLE_KEY ? '' : 'missing STRIPE_PUBLISHABLE_KEY'
+].filter(Boolean);
+const STRIPE_WEBHOOK_CONFIG_ISSUES = [
+    STRIPE_WEBHOOK_SECRET ? '' : 'missing STRIPE_WEBHOOK_SECRET'
 ].filter(Boolean);
 const stripeClient = STRIPE_ENABLED ? new Stripe(STRIPE_SECRET_KEY) : null;
 
@@ -202,7 +207,14 @@ if (TRUST_PROXY_HOPS > 0) app.set('trust proxy', TRUST_PROXY_HOPS);
 // 1. 中间件配置
 // ==========================================
 app.use(cors()); // 允许前端跨域请求
-app.use(express.json({ limit: '100kb' })); // 允许 Express 解析前端发来的 JSON 数据
+app.use(express.json({
+    limit: '100kb',
+    verify: (req, _res, buf) => {
+        if (req.originalUrl === '/api/stripe/webhook') {
+            req.rawBody = Buffer.from(buf);
+        }
+    }
+})); // 允许 Express 解析前端发来的 JSON 数据
 app.use(express.static(path.join(__dirname))); // 托管静态文件
 
 const bookingIpRateLimiter = rateLimit({
@@ -1034,6 +1046,90 @@ async function sendPaidBookingSmsNotifications({ booking, totalCents }) {
         recipients,
         deliveries,
         failures
+    };
+}
+
+async function runPostPaymentNotifications({ booking, totalCents, source = 'unknown' }) {
+    let twilioNotification = { sent: false, reason: '', recipients: [], deliveries: [], failures: [] };
+    try {
+        twilioNotification = await sendPaidBookingSmsNotifications({
+            booking,
+            totalCents
+        });
+    } catch (twilioErr) {
+        twilioNotification = { sent: false, reason: twilioErr.message, recipients: [], deliveries: [], failures: [] };
+        console.error(`Twilio payment confirmation SMS failed (${source}):`, twilioErr.message);
+    }
+
+    let paymentNotification = { sent: false, reason: '' };
+    try {
+        paymentNotification = await triggerPaymentConfirmedMessageInGhl({
+            bookingId: booking.id,
+            room: booking.room,
+            partySize: booking.partySize,
+            date: booking.date,
+            time: booking.time,
+            duration: booking.duration,
+            name: booking.name,
+            phone: booking.phone
+        });
+    } catch (notifyErr) {
+        paymentNotification = { sent: false, reason: notifyErr.message };
+        console.error(`GHL payment confirmation failed (${source}):`, notifyErr.message);
+    }
+
+    return { twilioNotification, paymentNotification };
+}
+
+async function finalizeStripePaymentForBooking({ booking, session, fallbackTotalCents = 0, source = 'unknown' }) {
+    const bookingId = Number(booking?.id || 0);
+    if (!Number.isFinite(bookingId) || bookingId <= 0) {
+        return { ok: false, statusCode: 400, error: 'Invalid booking.' };
+    }
+    if (!session) {
+        return { ok: false, statusCode: 400, error: 'Missing Stripe session.' };
+    }
+
+    const paid = String(session.payment_status || '').toLowerCase() === 'paid';
+    const metaBookingId = Number(session.metadata?.bookingId || session.client_reference_id || 0);
+    if (!paid || metaBookingId !== bookingId) {
+        return { ok: false, statusCode: 400, error: 'Stripe payment is not completed or does not match booking.' };
+    }
+
+    if (normalizePaymentStatus(booking.payment_status) === 'paid') {
+        return {
+            ok: true,
+            alreadyPaid: true,
+            bookingId,
+            paymentStatus: 'paid',
+            totalCents: Number(booking.payment_amount_cents || 0)
+        };
+    }
+
+    const sessionAmountTotal = Number(session.amount_total || 0);
+    const totalCents = Number.isFinite(sessionAmountTotal) && sessionAmountTotal > 0
+        ? sessionAmountTotal
+        : Number(fallbackTotalCents || 0);
+
+    await markBookingAsPaid({
+        booking,
+        method: 'stripe',
+        reference: String(session.id || session.payment_intent || ''),
+        totalCents
+    });
+
+    const notifications = await runPostPaymentNotifications({
+        booking,
+        totalCents,
+        source
+    });
+
+    return {
+        ok: true,
+        bookingId,
+        paymentStatus: 'paid',
+        totalCents,
+        ...notifications
     };
 }
 
@@ -1999,6 +2095,7 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         const session = await stripeClient.checkout.sessions.create({
             mode: 'payment',
             payment_method_types: ['card'],
+            client_reference_id: String(booking.id),
             line_items: [
                 {
                     quantity: 1,
@@ -2123,45 +2220,14 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
         }
 
         const session = await stripeClient.checkout.sessions.retrieve(sessionId);
-        const paid = String(session.payment_status || '').toLowerCase() === 'paid';
-        const metaBookingId = Number(session.metadata?.bookingId || 0);
-        if (!paid || metaBookingId !== booking.id) {
-            return res.status(400).json({ error: 'Stripe payment is not completed or does not match booking.' });
-        }
-
-        await markBookingAsPaid({
+        const finalizeResult = await finalizeStripePaymentForBooking({
             booking,
-            method: 'stripe',
-            reference: session.id,
-            totalCents: quote.totalCents
+            session,
+            fallbackTotalCents: quote.totalCents,
+            source: 'confirm-route'
         });
-
-        let twilioNotification = { sent: false, reason: '', recipients: [], deliveries: [], failures: [] };
-        try {
-            twilioNotification = await sendPaidBookingSmsNotifications({
-                booking,
-                totalCents: quote.totalCents
-            });
-        } catch (twilioErr) {
-            twilioNotification = { sent: false, reason: twilioErr.message, recipients: [], deliveries: [], failures: [] };
-            console.error('Twilio payment confirmation SMS failed:', twilioErr.message);
-        }
-
-        let paymentNotification = { sent: false, reason: '' };
-        try {
-            paymentNotification = await triggerPaymentConfirmedMessageInGhl({
-                bookingId: booking.id,
-                room: booking.room,
-                partySize: booking.partySize,
-                date: booking.date,
-                time: booking.time,
-                duration: booking.duration,
-                name: booking.name,
-                phone: booking.phone
-            });
-        } catch (notifyErr) {
-            paymentNotification = { sent: false, reason: notifyErr.message };
-            console.error('GHL payment confirmation failed:', notifyErr.message);
+        if (!finalizeResult.ok) {
+            return res.status(finalizeResult.statusCode || 400).json({ error: finalizeResult.error || 'Failed to confirm payment.' });
         }
 
         return res.status(200).json({
@@ -2169,12 +2235,77 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
             bookingId: booking.id,
             paymentStatus: 'paid',
             bookingType: String(booking.booking_type || 'standard'),
-            paymentNotification,
-            twilioNotification
+            paymentNotification: finalizeResult.paymentNotification || { sent: false, reason: '' },
+            twilioNotification: finalizeResult.twilioNotification || { sent: false, reason: '', recipients: [], deliveries: [], failures: [] }
         });
     } catch (err) {
         console.error('Failed to confirm payment:', err.message);
         return res.status(500).json({ error: 'Failed to confirm payment.' });
+    }
+});
+
+app.post('/api/stripe/webhook', async (req, res) => {
+    try {
+        if (!STRIPE_ENABLED || !stripeClient) {
+            return res.status(400).send('Stripe not configured.');
+        }
+        if (!STRIPE_WEBHOOK_ENABLED) {
+            return res.status(400).send('Stripe webhook secret not configured.');
+        }
+
+        const signature = String(req.headers['stripe-signature'] || '').trim();
+        const rawBody = req.rawBody;
+        if (!signature || !rawBody) {
+            return res.status(400).send('Missing webhook signature or raw body.');
+        }
+
+        let event;
+        try {
+            event = stripeClient.webhooks.constructEvent(rawBody, signature, STRIPE_WEBHOOK_SECRET);
+        } catch (err) {
+            console.error('Stripe webhook signature verification failed:', err.message);
+            return res.status(400).send(`Webhook Error: ${err.message}`);
+        }
+
+        const eventType = String(event?.type || '').trim();
+        if (!['checkout.session.completed', 'checkout.session.async_payment_succeeded'].includes(eventType)) {
+            return res.status(200).json({ received: true, ignored: true, eventType });
+        }
+
+        const session = event?.data?.object;
+        const bookingId = Number(session?.metadata?.bookingId || session?.client_reference_id || 0);
+        if (!Number.isFinite(bookingId) || bookingId <= 0) {
+            console.warn(`Stripe webhook (${eventType}) missing valid bookingId. session=${session?.id || 'unknown'}`);
+            return res.status(200).json({ received: true, ignored: true, reason: 'missing-booking-id' });
+        }
+
+        const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
+        if (!booking) {
+            console.warn(`Stripe webhook received for missing booking #${bookingId}, session=${session?.id || 'unknown'}`);
+            return res.status(200).json({ received: true, ignored: true, reason: 'booking-not-found' });
+        }
+
+        const quote = calculateBookingPaymentQuote(booking);
+        const finalizeResult = await finalizeStripePaymentForBooking({
+            booking,
+            session,
+            fallbackTotalCents: quote.totalCents,
+            source: `webhook:${eventType}`
+        });
+        if (!finalizeResult.ok) {
+            console.warn(`Stripe webhook finalize skipped for booking #${bookingId}: ${finalizeResult.error}`);
+            return res.status(200).json({ received: true, ignored: true, reason: finalizeResult.error || 'finalize-failed' });
+        }
+
+        return res.status(200).json({
+            received: true,
+            processed: true,
+            bookingId,
+            alreadyPaid: Boolean(finalizeResult.alreadyPaid)
+        });
+    } catch (err) {
+        console.error('Stripe webhook processing failed:', err.message);
+        return res.status(500).send('Webhook handler failed.');
     }
 });
 
@@ -2630,6 +2761,7 @@ app.listen(PORT, () => {
     console.log(`📲 Twilio SMS ${TWILIO_ENABLED ? `enabled (support notify: ${TWILIO_SUPPORT_PHONE})` : 'disabled'}`);
     console.log(`📅 Google Calendar sync ${GOOGLE_CALENDAR_ENABLED ? `enabled (${Math.round(GOOGLE_CALENDAR_SYNC_INTERVAL_MS / 60000)} min interval, calendar: ${GOOGLE_CALENDAR_ID})` : 'disabled'}`);
     console.log(`💳 Payments: Stripe(${STRIPE_ENABLED ? `enabled:${STRIPE_MODE}` : 'disabled'})`);
+    console.log(`🪝 Stripe webhook ${STRIPE_WEBHOOK_ENABLED ? 'enabled' : 'disabled'}`);
     if (!TWILIO_ENABLED && TWILIO_CONFIG_ISSUES.length) {
         console.warn(`⚠️ Twilio config issue: ${TWILIO_CONFIG_ISSUES.join(', ')}`);
     }
@@ -2638,6 +2770,9 @@ app.listen(PORT, () => {
     }
     if (!STRIPE_ENABLED && STRIPE_CONFIG_ISSUES.length) {
         console.warn(`⚠️ Stripe config issue: ${STRIPE_CONFIG_ISSUES.join(', ')}`);
+    }
+    if (STRIPE_ENABLED && !STRIPE_WEBHOOK_ENABLED && STRIPE_WEBHOOK_CONFIG_ISSUES.length) {
+        console.warn(`⚠️ Stripe webhook config issue: ${STRIPE_WEBHOOK_CONFIG_ISSUES.join(', ')}`);
     }
     startGoogleCalendarSyncJobs();
 });
