@@ -382,6 +382,34 @@
             line-height: 1.45;
         }
 
+        .service-charge-notice {
+            margin: 0 auto 16px auto;
+            padding: 14px 16px;
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            border-left: 3px solid var(--primary-blue);
+            border-radius: 10px;
+            background: rgba(59, 130, 246, 0.08);
+            text-align: left;
+        }
+
+        .service-charge-notice h3 {
+            margin: 0 0 7px 0;
+            color: var(--text-main);
+            font-size: 0.98rem;
+        }
+
+        .service-charge-notice p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 0.84rem;
+            line-height: 1.5;
+        }
+
+        .service-charge-notice .service-charge-thanks {
+            margin-top: 8px;
+            color: #c4dafd;
+        }
+
         .service-detail {
             border: 1px solid var(--border-color);
             border-radius: 10px;
@@ -756,6 +784,12 @@
             </ul>
             <p class="service-menu-note" id="payment-booking-id-hint">Booking ID: -</p>
         </div>
+
+        <aside class="service-charge-notice" aria-labelledby="service-charge-title">
+            <h3 id="service-charge-title">18% Service Charge</h3>
+            <p>An 18% service charge is applied to all room bookings, food, and beverage purchases. This fee helps cover ongoing service, room preparation, cleaning, and support staff to ensure every guest enjoys a safe, clean, and enjoyable karaoke experience.</p>
+            <p class="service-charge-thanks">Thank you for choosing 1383 Karaoke Bar.</p>
+        </aside>
 
         <div class="upsell-section" style="margin-top: 16px;">
             <h3 class="upsell-title">Choose Payment Method</h3>
