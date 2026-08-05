@@ -118,6 +118,51 @@ const DRINK_PACKAGE_CATALOG = {
 };
 const DRINK_PACKAGE_KEYS = new Set(Object.keys(DRINK_PACKAGE_CATALOG));
 
+// Booking & Payment Policy version. Bump this whenever the policy wording
+// changes materially so front-end confirmations are tied to the right text.
+const BOOKING_POLICY_VERSION = '2026-08-05-v1';
+
+// Server-side static, versioned canonical policy text. This is code, not a
+// database record: it is never read from or written to the database. It must
+// cover every substantive term of the Booking & Payment Policy card shown on
+// pages/legal.html#booking-payment-policy, item by item. When the policy
+// wording changes, update this text AND pages/legal.html together, then bump
+// BOOKING_POLICY_VERSION.
+const BOOKING_POLICY_TERMS = Object.freeze({
+    deposit:
+        'Online payments made through this website are booking deposits. For standard room bookings, the deposit generally consists of the first-hour room charge plus any selected prepaid packages shown in the Deposit Summary. The booking deposit is not necessarily the final amount for the guest\u2019s visit.',
+
+    additionalVenueCharges:
+        'Any additional charges, including extra room time, food and beverage purchases, applicable HST, and the 18% Service Charge, will be calculated based on the guest\u2019s actual purchases and usage and settled at the venue.',
+
+    cancellationAndRefunds:
+        'Online booking deposits are non-refundable when the customer cancels the booking or does not attend the reservation, except where a refund is required by applicable law. Nothing in this policy limits any non-waivable rights or remedies available under applicable consumer protection law.',
+
+    rescheduling:
+        'Requests to reschedule must be made at least 24 hours before the reserved start time. Rescheduling is subject to availability and is not guaranteed. Changes requested within 24 hours of the reservation are not permitted.',
+
+    lateArrival:
+        'The reserved booking time begins at the scheduled start time. If the venue does not hear from the customer within 30 minutes after the scheduled start time, the room may be released. A released room does not automatically entitle the customer to a refund of the online booking deposit, subject to applicable law.',
+
+    serviceCharge:
+        'An 18% Service Charge applies to all room bookings and food & beverage purchases, including Private Event bookings.',
+
+    taxes:
+        'HST is additional where applicable.',
+
+    contactInformation:
+        '1383 Karaoke Bar & KTV. Phone: 613-867-1383. Ottawa, ON.'
+});
+
+const BOOKING_POLICY_TEXT = Object.values(BOOKING_POLICY_TERMS).join('\n');
+
+// Hash of the canonical policy text, used only in Stripe Checkout metadata
+// and for version correspondence. Never written to the database.
+const BOOKING_POLICY_HASH = crypto
+    .createHash('sha256')
+    .update(BOOKING_POLICY_TEXT)
+    .digest('hex');
+
 const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || '').trim();
 const STRIPE_PUBLISHABLE_KEY = String(process.env.STRIPE_PUBLISHABLE_KEY || '').trim();
 const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || '').trim();
@@ -796,7 +841,7 @@ function calculateBookingPaymentQuote(booking) {
     const subtotal = roundCurrency(firstHourPrice + packageTotal);
     const total = subtotal;
     const totalCents = toCents(total);
-    const safeRoomLabel = isPrivateEvent ? 'Private Event (Full Day)' : String(booking.room || 'Room');
+    const safeRoomLabel = isPrivateEvent ? 'Private Event Deposit' : String(booking.room || 'Room');
     const safeDate = String(booking.date || PRIVATE_EVENT_PLACEHOLDER);
     const safeTime = String(booking.time || PRIVATE_EVENT_PLACEHOLDER);
 
@@ -810,7 +855,7 @@ function calculateBookingPaymentQuote(booking) {
         total,
         totalCents,
         description: isPrivateEvent
-            ? `1383 KTV Private Event - Full Day (${safeDate})`
+            ? `1383 KTV Private Event Deposit (${safeDate})`
             : `1383 KTV Booking Deposit - ${safeRoomLabel} (${safeDate} ${safeTime})`
     };
 }
@@ -963,7 +1008,7 @@ function buildReservationWindowText(dateStr, timeStr, durationRaw) {
     return `${dateLabel} from ${startLabel} to ${endLabel}`;
 }
 
-function buildTwilioPaidMessage({ booking, totalCents }) {
+function buildTwilioPaidMessage({ booking, totalCents, baseUrl = '' }) {
     const bookingId = Number(booking?.id || 0);
     const customerName = String(booking?.name || '').trim() || 'Guest';
     const room = String(booking?.room || '').trim() || 'Room';
@@ -975,7 +1020,12 @@ function buildTwilioPaidMessage({ booking, totalCents }) {
     const depositLabel = formatSmsCurrency(depositAmount);
     const whenLabel = buildReservationWindowText(booking?.date, booking?.time, booking?.duration);
 
-    return `Hi ${customerName}, this is 1383 Karaoke Bar. Your reservation is confirmed. Booking ID: #${bookingId}. ${room} at rate: ${roomRateLabel} on ${whenLabel}.\n\nYour ${depositLabel} deposit has been received. Rescheduling is available with at least 24 hours' notice (subject to availability); changes within 24 hours are not permitted.\n\nAn 18% service charge applies. Outside food & drinks are not allowed.\n\nPlease note: your booking starts on time. If we do not hear from you within 30 minutes of your reservation, the room may be released.\n\nFor assistance: 613-867-1383`;
+    // Only append the policy link when we have a reliable public URL;
+    // never concatenate a bogus localhost URL into customer-facing SMS.
+    const safeBaseUrl = String(baseUrl || '').trim();
+    const policyLink = safeBaseUrl ? `\n\nBooking Policy: ${safeBaseUrl.replace(/\/+$/, '')}/pages/legal.html#booking-payment-policy` : '';
+
+    return `Hi ${customerName}, this is 1383 Karaoke Bar. Your reservation is confirmed. Booking ID: #${bookingId}. ${room} at rate: ${roomRateLabel} on ${whenLabel}.\n\nYour ${depositLabel} booking deposit has been received.\n\nOnline booking deposits are non-refundable for customer cancellations and no-shows, except where required by applicable law.\n\nRescheduling is available with at least 24 hours' notice (subject to availability); changes within 24 hours are not permitted.\n\nAn 18% Service Charge and applicable HST are additional.\n\nPlease note: your booking starts on time. If we do not hear from you within 30 minutes of your reservation, the room may be released.\n\nOutside food & drinks are not allowed.${policyLink}\n\nFor assistance: 613-867-1383`;
 }
 
 function normalizePhoneOrEmpty(rawPhone) {
@@ -1018,7 +1068,7 @@ async function sendTwilioSms(to, body) {
     };
 }
 
-async function sendPaidBookingSmsNotifications({ booking, totalCents }) {
+async function sendPaidBookingSmsNotifications({ booking, totalCents, baseUrl = '' }) {
     if (!TWILIO_ENABLED) {
         return { sent: false, reason: `Twilio is not configured (${TWILIO_CONFIG_ISSUES.join(', ') || 'unknown issue'}).`, recipients: [] };
     }
@@ -1028,7 +1078,7 @@ async function sendPaidBookingSmsNotifications({ booking, totalCents }) {
         return { sent: false, reason: 'No valid recipient phone numbers for Twilio SMS.', recipients: [] };
     }
 
-    const body = buildTwilioPaidMessage({ booking, totalCents });
+    const body = buildTwilioPaidMessage({ booking, totalCents, baseUrl });
     const deliveries = [];
     const failures = [];
 
@@ -1049,12 +1099,13 @@ async function sendPaidBookingSmsNotifications({ booking, totalCents }) {
     };
 }
 
-async function runPostPaymentNotifications({ booking, totalCents, source = 'unknown' }) {
+async function runPostPaymentNotifications({ booking, totalCents, source = 'unknown', baseUrl = '' }) {
     let twilioNotification = { sent: false, reason: '', recipients: [], deliveries: [], failures: [] };
     try {
         twilioNotification = await sendPaidBookingSmsNotifications({
             booking,
-            totalCents
+            totalCents,
+            baseUrl
         });
     } catch (twilioErr) {
         twilioNotification = { sent: false, reason: twilioErr.message, recipients: [], deliveries: [], failures: [] };
@@ -1081,7 +1132,7 @@ async function runPostPaymentNotifications({ booking, totalCents, source = 'unkn
     return { twilioNotification, paymentNotification };
 }
 
-async function finalizeStripePaymentForBooking({ booking, session, fallbackTotalCents = 0, source = 'unknown' }) {
+async function finalizeStripePaymentForBooking({ booking, session, fallbackTotalCents = 0, source = 'unknown', baseUrl = '' }) {
     const bookingId = Number(booking?.id || 0);
     if (!Number.isFinite(bookingId) || bookingId <= 0) {
         return { ok: false, statusCode: 400, error: 'Invalid booking.' };
@@ -1121,7 +1172,8 @@ async function finalizeStripePaymentForBooking({ booking, session, fallbackTotal
     const notifications = await runPostPaymentNotifications({
         booking,
         totalCents,
-        source
+        source,
+        baseUrl
     });
 
     return {
@@ -1838,6 +1890,8 @@ app.get('/api/public/security-config', (req, res) => {
         captchaEnabled: CAPTCHA_ENABLED,
         captchaProvider: CAPTCHA_ENABLED ? 'turnstile' : '',
         turnstileSiteKey: CAPTCHA_ENABLED ? TURNSTILE_SITE_KEY : '',
+        bookingPolicyVersion: BOOKING_POLICY_VERSION,
+        bookingPolicyHash: BOOKING_POLICY_HASH,
         payment: {
             currency: PAYMENT_CURRENCY,
             pendingHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
@@ -2076,6 +2130,16 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
             });
         }
 
+        // Booking & Payment Policy acceptance is enforced server-side, not
+        // only by the front-end checkbox state. No database record is made;
+        // the confirmation travels in Stripe Checkout metadata only.
+        if (req.body?.termsAccepted !== true) {
+            return res.status(400).json({ error: 'Booking & Payment Policy acceptance is required before payment.' });
+        }
+        if (String(req.body?.policyVersion || '').trim() !== BOOKING_POLICY_VERSION) {
+            return res.status(409).json({ error: 'The Booking & Payment Policy has changed. Please review and accept the current policy before payment.' });
+        }
+
         const quote = calculateBookingPaymentQuote(booking);
         if (!Number.isFinite(quote.totalCents) || quote.totalCents <= 0) {
             return res.status(400).json({ error: 'Invalid payment amount.' });
@@ -2091,6 +2155,10 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         if (!STRIPE_ENABLED || !stripeClient) {
             return res.status(400).json({ error: 'Stripe is not configured yet.' });
         }
+
+        // Server-generated acceptance time, only once Stripe is confirmed
+        // available. No local acceptance record is ever persisted.
+        const acceptedAt = new Date().toISOString();
 
         const session = await stripeClient.checkout.sessions.create({
             mode: 'payment',
@@ -2110,7 +2178,11 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
             ],
             metadata: {
                 bookingId: String(booking.id),
-                provider: 'stripe'
+                provider: 'stripe',
+                termsAccepted: 'true',
+                policyVersion: BOOKING_POLICY_VERSION,
+                policyHash: BOOKING_POLICY_HASH,
+                termsAcceptedAt: acceptedAt
             },
             success_url: `${baseUrl}/pages/booking.html?payment=success&provider=stripe&bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
             cancel_url: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}&cancelToken=${encodeURIComponent(issuedCancelToken)}`
@@ -2224,7 +2296,8 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
             booking,
             session,
             fallbackTotalCents: quote.totalCents,
-            source: 'confirm-route'
+            source: 'confirm-route',
+            baseUrl: getPublicBaseUrl(req)
         });
         if (!finalizeResult.ok) {
             return res.status(finalizeResult.statusCode || 400).json({ error: finalizeResult.error || 'Failed to confirm payment.' });
@@ -2290,7 +2363,8 @@ app.post('/api/stripe/webhook', async (req, res) => {
             booking,
             session,
             fallbackTotalCents: quote.totalCents,
-            source: `webhook:${eventType}`
+            source: `webhook:${eventType}`,
+            baseUrl: getPublicBaseUrl(req)
         });
         if (!finalizeResult.ok) {
             console.warn(`Stripe webhook finalize skipped for booking #${bookingId}: ${finalizeResult.error}`);

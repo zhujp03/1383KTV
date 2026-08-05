@@ -360,6 +360,175 @@
             font-size: 0.82rem;
         }
 
+        /* 房间价格块：主价格 + 强制费用说明 */
+        .room-price-block {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 2px;
+        }
+        .room-price-block .price {
+            color: var(--primary-blue);
+            font-weight: bold;
+        }
+        .price-fee-note {
+            color: #c4dafd;
+            font-size: 0.76rem;
+            line-height: 1.35;
+            text-align: right;
+        }
+
+        /* Step 1 顶部的重要订金与服务费提示框 */
+        .booking-important-notice {
+            margin-bottom: 24px;
+            padding: 18px;
+            text-align: left;
+            border: 1px solid rgba(59, 130, 246, 0.45);
+            border-left: 4px solid var(--primary-blue);
+            border-radius: 12px;
+            background: rgba(59, 130, 246, 0.12);
+        }
+        .booking-important-notice h3 {
+            margin: 0 0 10px 0;
+            color: #F9FAFB;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .booking-important-notice ul {
+            list-style: none;
+            margin: 0 0 12px 0;
+            padding: 0;
+        }
+        .booking-important-notice ul li {
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 8px;
+            color: #DCE7FB;
+            font-size: 0.95rem;
+            line-height: 1.55;
+        }
+        .booking-important-notice ul li:last-child {
+            margin-bottom: 0;
+        }
+        .booking-important-notice ul li::before {
+            content: '•';
+            position: absolute;
+            left: 2px;
+            top: 0;
+            color: var(--primary-blue);
+            font-weight: 700;
+        }
+        .booking-important-notice a {
+            display: inline-block;
+            margin-top: 4px;
+            color: #9ec2ff;
+            font-size: 0.95rem;
+            font-weight: 600;
+            text-decoration: underline;
+        }
+
+        /* Step 5 付款前 Important 提示框 */
+        .payment-important-notice {
+            margin: 0 auto 16px auto;
+            padding: 16px 18px;
+            border: 1px solid rgba(245, 158, 11, 0.45);
+            border-left: 4px solid #F59E0B;
+            border-radius: 12px;
+            background: rgba(245, 158, 11, 0.10);
+            text-align: left;
+        }
+        .payment-important-notice h3 {
+            margin: 0 0 10px 0;
+            color: #FDE68A;
+            font-size: 1.05rem;
+            font-weight: 700;
+        }
+        .payment-important-notice ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .payment-important-notice ul li {
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 8px;
+            color: #F3F4F6;
+            font-size: 0.92rem;
+            line-height: 1.55;
+        }
+        .payment-important-notice ul li:last-child {
+            margin-bottom: 0;
+        }
+        .payment-important-notice ul li::before {
+            content: '•';
+            position: absolute;
+            left: 2px;
+            top: 0;
+            color: #F59E0B;
+            font-weight: 700;
+        }
+
+        /* Step 5 付款前强制确认区域 */
+        .payment-policy-consent {
+            margin: 0 0 14px 0;
+            padding: 14px 16px;
+            border: 1px solid rgba(59, 130, 246, 0.35);
+            border-radius: 10px;
+            background: rgba(59, 130, 246, 0.06);
+            text-align: left;
+        }
+        .payment-policy-label {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            cursor: pointer;
+            color: var(--text-main);
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .payment-policy-label input {
+            margin-top: 3px;
+            width: 18px;
+            height: 18px;
+            accent-color: var(--primary-blue);
+            flex-shrink: 0;
+            cursor: pointer;
+        }
+        .payment-policy-consent ul {
+            list-style: none;
+            margin: 10px 0 0 0;
+            padding: 0;
+        }
+        .payment-policy-consent ul li {
+            position: relative;
+            padding-left: 18px;
+            margin-bottom: 8px;
+            color: #c4dafd;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+        .payment-policy-consent ul li:last-child {
+            margin-bottom: 0;
+        }
+        .payment-policy-consent ul li::before {
+            content: '•';
+            position: absolute;
+            left: 2px;
+            top: 0;
+            color: var(--primary-blue);
+            font-weight: 700;
+        }
+        .payment-policy-consent ul li a {
+            color: #9ec2ff;
+            text-decoration: underline;
+        }
+        .payment-policy-error {
+            margin: 10px 0 0 0;
+            color: #F87171;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }
+
         .service-menu-section {
             margin: 0 auto 26px auto;
             text-align: left;
@@ -559,23 +728,36 @@
 
     <div id="step-1" class="step-content">
         <h2 class="step-title">Choose Your Room</h2>
-        <p class="step-subtitle">Pick your room first, then build the perfect night.<br>
-            • All online booking deposits are non-refundable, including no-shows.<br>
-            • “Whole Day” bookings cover the full business hours of the day.<br>
-            • All prices shown are hourly rates before tax and service charge.
-        </p>
-<!--        <p class="step-subtitle">For all online bookings, deposit fees are non-refundable.\n-->
-<!--            Please note the whole day refers to the entire business hours of the day-->
-<!--            -->
-<!--        </p>-->
-<!--        <p class="step-subtitle">Note: Please note the whole day refers to the entire business hours of the day</p>-->
+        <p class="step-subtitle">Choose your room, then build your booking.</p>
+
+        <aside class="booking-important-notice" aria-labelledby="booking-notice-title">
+            <h3 id="booking-notice-title">Important Pricing &amp; Deposit Notice</h3>
+            <ul>
+                <li>
+                    Online booking deposits are non-refundable for customer
+                    cancellations and no-shows, except where a refund is required
+                    by applicable law.
+                </li>
+                <li>
+                    Displayed room rates are base hourly rates. An 18% Service
+                    Charge applies to all room bookings and food &amp; beverage
+                    purchases. HST is additional where applicable.
+                </li>
+            </ul>
+            <a href="legal.html#booking-payment-policy" target="_blank" rel="noopener noreferrer">
+                Review the Booking &amp; Payment Policy
+            </a>
+        </aside>
 
         <div class="rooms-grid">
             <div class="room-card" data-room-key="small" data-room-name="Small Room" onclick="selectRoom('Small Room', this)">
                 <span class="room-tier-label">Standard Room</span>
                 <div class="card-header">
                     <h3>Small Room</h3>
-                    <span class="price">$55/hr</span>
+                    <div class="room-price-block">
+                        <span class="price">$55/hr</span>
+                        <span class="price-fee-note">+ 18% Service Charge + HST</span>
+                    </div>
                 </div>
                 <p class="capacity">👥 1-8 people</p>
                 <p class="room-desc">Perfect for casual gatherings and small groups.</p>
@@ -585,7 +767,10 @@
                 <span class="room-tier-label">Group Room</span>
                 <div class="card-header">
                     <h3>Medium Room</h3>
-                    <span class="price">$65/hr</span>
+                    <div class="room-price-block">
+                        <span class="price">$65/hr</span>
+                        <span class="price-fee-note">+ 18% Service Charge + HST</span>
+                    </div>
                 </div>
                 <p class="capacity">👥 1-10 people</p>
                 <p class="room-desc">Balanced space for groups that want more room to celebrate.</p>
@@ -595,7 +780,10 @@
                 <span class="room-tier-label">VIP Room 🔥 - Most Popular</span>
                 <div class="card-header">
                     <h3>VIP Room</h3>
-                    <span class="price">$85/hr</span>
+                    <div class="room-price-block">
+                        <span class="price">$85/hr</span>
+                        <span class="price-fee-note">+ 18% Service Charge + HST</span>
+                    </div>
                 </div>
                 <p class="capacity">👥 1-20 people</p>
                 <p class="room-desc">Premium sound system, upgraded lighting, and a more private atmosphere.</p>
@@ -605,7 +793,10 @@
                 <span class="room-tier-label">Private Event</span>
                 <div class="card-header">
                     <h3>Private Event</h3>
-                    <span class="price">$400 deposit required</span>
+                    <div class="room-price-block">
+                        <span class="price">$400 deposit required</span>
+                        <span class="price-fee-note">+ 18% Service Charge + HST</span>
+                    </div>
                 </div>
                 <p class="capacity">🔒 Full-day private booking</p>
                 <p class="room-desc">Reserve the room for the entire business day.</p>
@@ -776,23 +967,78 @@
         <p class="step-subtitle">Step 5: complete payment to finalize your booking.</p>
 
         <div class="service-menu-section">
-            <h3>Deposit Summary</h3>
-            <p class="service-menu-note" id="payment-summary-note">Deposit amount = first-hour room price + selected drinking packages.(Tax and service charge not included)</p>
+            <h3>Booking Deposit</h3>
+            <p class="service-menu-note" id="payment-summary-note">Your online payment covers your booking deposit only.</p>
             <ul class="service-price-list" id="payment-breakdown-list">
-                <li><span>Room (first hour)(Tax and service charge not included)</span><span class="service-item-price">-</span></li>
-                <li><span><strong>Total deposit due now</strong></span><span class="service-item-price" id="payment-total-amount">$0.00</span></li>
+                <li><span>First Hour Room Deposit</span><span class="service-item-price">-</span></li>
+                <li><span><strong>Deposit Due Today</strong></span><span class="service-item-price" id="payment-total-amount">$0.00</span></li>
             </ul>
             <p class="service-menu-note" id="payment-booking-id-hint">Booking ID: -</p>
         </div>
 
+        <aside class="payment-important-notice" aria-labelledby="payment-important-title">
+            <h3 id="payment-important-title">Important</h3>
+            <ul>
+                <li>Today’s payment covers your booking deposit only.</li>
+                <li>
+                    Any additional charges during your visit, including extra room time,
+                    food and beverage purchases, applicable HST, and the 18% Service
+                    Charge, will be calculated and settled at the venue.
+                </li>
+                <li>An 18% Service Charge applies to all room bookings and food &amp; beverage purchases.</li>
+                <li>
+                    Online booking deposits are non-refundable for customer
+                    cancellations and no-shows, except where a refund is required by
+                    applicable law.
+                </li>
+            </ul>
+        </aside>
+
         <aside class="service-charge-notice" aria-labelledby="service-charge-title">
             <h3 id="service-charge-title">18% Service Charge</h3>
-            <p>An 18% service charge is applied to all room bookings, food, and beverage purchases. This fee helps cover ongoing service, room preparation, cleaning, and support staff to ensure every guest enjoys a safe, clean, and enjoyable karaoke experience.</p>
+            <p><strong>An 18% Service Charge will be added to all room bookings and food &amp; beverage purchases.</strong> This fee helps cover ongoing service, room preparation, cleaning, and support staff to ensure every guest enjoys a safe, clean, and enjoyable karaoke experience.</p>
             <p class="service-charge-thanks">Thank you for choosing 1383 Karaoke Bar.</p>
         </aside>
 
         <div class="upsell-section" style="margin-top: 16px;">
             <h3 class="upsell-title">Choose Payment Method</h3>
+
+            <div class="payment-policy-consent" id="payment-policy-consent">
+                <label for="payment-policy-checkbox" class="payment-policy-label">
+                    <input
+                        type="checkbox"
+                        id="payment-policy-checkbox"
+                        name="paymentPolicyAccepted"
+                        onchange="handlePaymentPolicyCheckboxChange()"
+                    >
+                    <span>I understand and agree that:</span>
+                </label>
+
+                <ul>
+                    <li>Today’s online payment is a booking deposit only.</li>
+                    <li>
+                        Online booking deposits are non-refundable for customer
+                        cancellations and no-shows, except where required by
+                        applicable law.
+                    </li>
+                    <li>An 18% Service Charge applies to all room bookings and food &amp; beverage purchases.</li>
+                    <li>HST is additional where applicable.</li>
+                    <li>
+                        I have read and agree to the
+                        <a href="legal.html#booking-payment-policy"
+                           target="_blank"
+                           rel="noopener noreferrer">
+                            Booking &amp; Payment Policy
+                        </a>.
+                    </li>
+                </ul>
+
+                <p id="payment-policy-error"
+                   class="payment-policy-error"
+                   role="alert"
+                   aria-live="polite"></p>
+            </div>
+
             <div class="upsell-grid">
                 <button type="button" class="upsell-card" id="pay-with-stripe-btn" onclick="startPayment('stripe')">
                     <div class="upsell-label"><span>💳 Stripe (Card)</span></div>
@@ -833,7 +1079,9 @@
         selectedPackages: [],
         paymentStatus: 'unpaid',
         paymentQuote: null,
-        paymentCancelToken: ''
+        paymentCancelToken: '',
+        termsAccepted: false,
+        termsPolicyVersion: ''
     };
 
     let currentDayBookings = [];
@@ -848,6 +1096,7 @@
         captchaEnabled: false,
         captchaProvider: '',
         turnstileSiteKey: '',
+        bookingPolicyVersion: '',
         payment: {
             currency: 'CAD',
             pendingHoldMinutes: 15,
@@ -941,6 +1190,7 @@
         bookingData.paymentQuote = null;
         bookingData.paymentCancelToken = '';
         clearPaymentHoldTimer();
+        clearPaymentPolicyConsent();
     }
 
     async function releaseUnpaidReservation(options = {}) {
@@ -1072,6 +1322,7 @@
                 captchaEnabled: Boolean(config && config.captchaEnabled),
                 captchaProvider: (config && config.captchaProvider) || '',
                 turnstileSiteKey: (config && config.turnstileSiteKey) || '',
+                bookingPolicyVersion: (config && config.bookingPolicyVersion) || '',
                 payment: (config && config.payment) || securityConfig.payment
             };
         } catch (error) {
@@ -1081,6 +1332,7 @@
                 captchaEnabled: false,
                 captchaProvider: '',
                 turnstileSiteKey: '',
+                bookingPolicyVersion: '',
                 payment: securityConfig.payment
             };
         }
@@ -1142,15 +1394,47 @@
         return (securityConfig.payment && securityConfig.payment.providers && securityConfig.payment.providers[provider]) || { enabled: false };
     }
 
-    function updatePaymentProviderButtons() {
+    function isPaymentPolicyAccepted() {
+        return Boolean(document.getElementById('payment-policy-checkbox')?.checked);
+    }
+
+    // 唯一管理付款按钮 disabled 状态的地方：Stripe 未配置、政策未确认、
+    // 或付款请求进行中时均不可点击。
+    function updatePaymentButtonState() {
         const stripeCfg = getPaymentProviderConfig('stripe');
         const stripeBtn = document.getElementById('pay-with-stripe-btn');
+        const accepted = isPaymentPolicyAccepted();
+        if (stripeBtn) {
+            stripeBtn.disabled = !stripeCfg.enabled || !accepted || paymentActionInProgress;
+        }
+    }
+
+    function handlePaymentPolicyCheckboxChange() {
+        bookingData.termsAccepted = isPaymentPolicyAccepted();
+        bookingData.termsPolicyVersion = securityConfig.bookingPolicyVersion || '';
+        const errorNode = document.getElementById('payment-policy-error');
+        if (errorNode) errorNode.textContent = '';
+        updatePaymentButtonState();
+    }
+
+    function clearPaymentPolicyConsent() {
+        const checkbox = document.getElementById('payment-policy-checkbox');
+        if (checkbox) checkbox.checked = false;
+        bookingData.termsAccepted = false;
+        bookingData.termsPolicyVersion = '';
+        const errorNode = document.getElementById('payment-policy-error');
+        if (errorNode) errorNode.textContent = '';
+        updatePaymentButtonState();
+    }
+
+    function updatePaymentProviderButtons() {
+        const stripeCfg = getPaymentProviderConfig('stripe');
         const stripeText = document.getElementById('stripe-status-text');
 
-        if (stripeBtn) stripeBtn.disabled = !stripeCfg.enabled;
         if (stripeText) stripeText.textContent = stripeCfg.enabled
             ? 'Secure card checkout via Stripe.'
             : 'Stripe is not configured yet.';
+        updatePaymentButtonState();
     }
 
     function formatMoney(amount, currency = 'CAD') {
@@ -1171,31 +1455,26 @@
         const currency = quote.currency || (securityConfig.payment && securityConfig.payment.currency) || 'CAD';
         const roomFee = Number(quote.roomFirstHourPrice || 0);
         const packageItems = Array.isArray(quote.packageItems) ? quote.packageItems : [];
-        const packageTotal = Number(quote.packageTotal || 0);
         const total = Number(quote.total || 0);
         const isPrivateEvent = String(bookingData.bookingType || '').toLowerCase() === 'private_event';
-        const lineItemLabel = isPrivateEvent ? 'Private Event (full day)' : 'Room (first hour)';
+        const lineItemLabel = isPrivateEvent ? 'Private Event Deposit' : 'First Hour Room Deposit';
 
         if (list) {
             const packageLines = packageItems
-                .map((item) => `<li><span>Package: ${item.name}</span><span class="service-item-price">${formatMoney(item.price, currency)}</span></li>`)
+                .map((item) => `<li><span>Selected Package: ${item.name}</span><span class="service-item-price">${formatMoney(item.price, currency)}</span></li>`)
                 .join('');
-            const packageTotalLine = packageItems.length
-                ? `<li><span>Packages subtotal</span><span class="service-item-price">${formatMoney(packageTotal, currency)}</span></li>`
-                : '';
             list.innerHTML = `
                 <li><span>${lineItemLabel}</span><span class="service-item-price">${formatMoney(roomFee, currency)}</span></li>
                 ${packageLines}
-                ${packageTotalLine}
-                <li><span><strong>Total deposit due now</strong></span><span class="service-item-price">${formatMoney(total, currency)}</span></li>
+                <li><span><strong>Deposit Due Today</strong></span><span class="service-item-price">${formatMoney(total, currency)}</span></li>
             `;
         }
         if (totalNode) totalNode.textContent = formatMoney(total, currency);
         if (bookingHint) bookingHint.textContent = `Booking ID: #${bookingData.bookingId || '-'}`;
         if (paymentSummaryNote) {
             paymentSummaryNote.textContent = isPrivateEvent
-                ? 'Deposit amount = full-day private event price.'
-                : 'Deposit amount = first-hour room price + selected drinking packages.';
+                ? 'This online payment is the deposit required to confirm your Private Event booking.'
+                : 'Your online payment covers your booking deposit only.';
         }
     }
 
@@ -1211,9 +1490,25 @@
                 openAppModal(result.error || 'Failed to refresh payment amount.', { title: 'Payment Error' });
                 return;
             }
+
+            // 如果总额或套餐明细变化，要求客人重新确认政策
+            const oldQuote = bookingData.paymentQuote;
+            const newQuote = result.paymentQuote;
+            const quoteChanged = oldQuote && newQuote && (
+                Number(oldQuote.total) !== Number(newQuote.total)
+                || JSON.stringify((oldQuote.packageItems || []).map((i) => i.key || i.name))
+                    !== JSON.stringify((newQuote.packageItems || []).map((i) => i.key || i.name))
+            );
+
             bookingData.paymentStatus = result.paymentStatus || 'unpaid';
             bookingData.bookingType = result.bookingType || bookingData.bookingType || 'standard';
-            renderPaymentQuote(result.paymentQuote);
+            renderPaymentQuote(newQuote);
+            if (quoteChanged) {
+                clearPaymentPolicyConsent();
+                openAppModal('The payment amount has changed. Please review the updated deposit summary and accept the Booking & Payment Policy again.', {
+                    title: 'Amount Updated'
+                });
+            }
             if (bookingData.paymentStatus === 'paid') {
                 clearPaymentHoldTimer();
                 openAppModal('This booking is already paid.', { title: 'Payment Complete' });
@@ -1226,6 +1521,18 @@
 
     async function startPayment(provider) {
         if (paymentActionInProgress) return;
+
+        // 无论按钮状态如何，这里都做防御检查，防止绕过 UI 直接调用
+        if (!isPaymentPolicyAccepted()) {
+            const errorNode = document.getElementById('payment-policy-error');
+            if (errorNode) {
+                errorNode.textContent = 'Please review and accept the Booking & Payment Policy before continuing to payment.';
+            }
+            const checkbox = document.getElementById('payment-policy-checkbox');
+            if (checkbox) checkbox.focus();
+            return;
+        }
+
         const providerConfig = getPaymentProviderConfig(provider);
         if (!providerConfig.enabled) {
             openAppModal('This payment method is not configured yet.', { title: 'Payment Disabled' });
@@ -1250,7 +1557,9 @@
                 body: JSON.stringify({
                     provider,
                     phone: bookingData.phone,
-                    cancelToken: bookingData.paymentCancelToken
+                    cancelToken: bookingData.paymentCancelToken,
+                    termsAccepted: true,
+                    policyVersion: securityConfig.bookingPolicyVersion
                 })
             });
             const result = await response.json();
@@ -1604,6 +1913,9 @@
                 securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
             }
 
+            // 新 Private Event 预订：清除上一笔预订的政策确认
+            clearPaymentPolicyConsent();
+
             if (result.paymentQuote) {
                 renderPaymentQuote(result.paymentQuote);
             } else {
@@ -1614,11 +1926,10 @@
             const quoteCurrency = result?.paymentQuote?.currency || securityConfig?.payment?.currency || 'CAD';
             const quoteTotal = Number(result?.paymentQuote?.total || 400);
             openAppModal(
-                `Private Event selected. Please pay ${formatMoney(quoteTotal, quoteCurrency)} now to secure your full-day private booking.`,
+                `Private Event selected. A deposit of ${formatMoney(quoteTotal, quoteCurrency)} is required to confirm your booking. Please review the Deposit Summary below and accept the Booking & Payment Policy before continuing to payment.`,
                 {
                     title: 'Private Event Payment',
-                    buttonText: 'Pay Now',
-                    onClose: () => startPayment('stripe')
+                    buttonText: 'Review Payment'
                 }
             );
         } catch (error) {
@@ -2021,6 +2332,8 @@
                 if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {
                     securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
                 }
+                // 新预订：清除上一笔预订的政策确认，要求重新勾选
+                clearPaymentPolicyConsent();
                 if (confirmBtn) {
                     confirmBtn.innerText = "Confirm Booking";
                     confirmBtn.disabled = false;

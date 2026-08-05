@@ -126,6 +126,11 @@ body {
     letter-spacing: 1px;
 }
 
+/* 锚点跳转时避免标题被固定导航栏遮挡（桌面 + 手机） */
+#booking-payment-policy {
+    scroll-margin-top: 120px;
+}
+
 .policy-section {
     margin-bottom: 35px;
 }
@@ -173,6 +178,21 @@ body {
 }
 
 .policy-section ul li strong {
+    color: #fff;
+}
+
+.policy-section p {
+    color: var(--text-muted);
+    font-size: 1.05rem;
+    line-height: 1.7;
+    margin-bottom: 12px;
+}
+
+.policy-section p:last-child {
+    margin-bottom: 0;
+}
+
+.policy-section p strong {
     color: #fff;
 }
 
@@ -438,5 +458,83 @@ footer {
 
     .policy-section ul li {
         font-size: 0.95rem;
+    }
+}
+
+/* =========================================
+   🖨️ 打印样式：Booking Policy 页面可打印
+   ========================================= */
+@media print {
+    .top-nav,
+    .hamburger,
+    footer,
+    .background-glow-1,
+    .background-glow-2 {
+        display: none !important;
+    }
+
+    body {
+        background: #ffffff !important;
+        color: #111827 !important;
+    }
+
+    .legal-container {
+        margin: 0 auto;
+        padding: 20px;
+        max-width: 100%;
+    }
+
+    .header-section {
+        margin-bottom: 24px;
+    }
+
+    .page-title {
+        color: #1d4ed8 !important;
+    }
+
+    .policies-wrapper {
+        display: block;
+    }
+
+    .policy-card {
+        background: #ffffff !important;
+        color: #111827 !important;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+        break-inside: avoid;
+    }
+
+    .card-main-title {
+        color: #111827 !important;
+        border-bottom-color: #3B82F6;
+    }
+
+    .policy-section h3,
+    .policy-section p strong,
+    .policy-section ul li strong {
+        color: #111827 !important;
+    }
+
+    .policy-section h3 span {
+        color: #1d4ed8 !important;
+    }
+
+    .policy-section p,
+    .policy-section ul li {
+        color: #1f2937 !important;
+    }
+
+    .disclaimer-box {
+        border: 1px solid #d1d5db;
+        border-left-width: 4px;
+    }
+
+    .disclaimer-box h4 {
+        color: #b45309 !important;
     }
 }
