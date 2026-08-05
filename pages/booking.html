@@ -427,9 +427,9 @@
             text-decoration: underline;
         }
 
-        /* Step 5 付款前 Important 提示框 */
+        /* Step 5 付款前唯一政策提示卡片（Before You Pay） */
         .payment-important-notice {
-            margin: 0 auto 16px auto;
+            margin: 0 auto 14px auto;
             padding: 16px 18px;
             border: 1px solid rgba(245, 158, 11, 0.45);
             border-left: 4px solid #F59E0B;
@@ -438,39 +438,68 @@
             text-align: left;
         }
         .payment-important-notice h3 {
-            margin: 0 0 10px 0;
+            margin: 0 0 12px 0;
             color: #FDE68A;
             font-size: 1.05rem;
             font-weight: 700;
         }
-        .payment-important-notice ul {
-            list-style: none;
-            margin: 0;
-            padding: 0;
+
+        /* 三项关键条款：Deposit / Pay at the venue / Non-refundable（桌面三列） */
+        .payment-disclosure-list {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 10px;
         }
-        .payment-important-notice ul li {
-            position: relative;
-            padding-left: 18px;
-            margin-bottom: 8px;
-            color: #F3F4F6;
-            font-size: 0.92rem;
-            line-height: 1.55;
+        .payment-disclosure-item {
+            padding: 11px 12px;
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.28);
+            border-radius: 9px;
         }
-        .payment-important-notice ul li:last-child {
-            margin-bottom: 0;
-        }
-        .payment-important-notice ul li::before {
-            content: '•';
-            position: absolute;
-            left: 2px;
-            top: 0;
-            color: #F59E0B;
+        .payment-disclosure-item strong {
+            display: block;
+            margin-bottom: 3px;
+            color: #FDE68A;
+            font-size: 0.9rem;
             font-weight: 700;
+        }
+        .payment-disclosure-item span {
+            display: block;
+            color: var(--text-muted);
+            font-size: 0.84rem;
+            line-height: 1.45;
+        }
+
+        /* 服务费原因：默认关闭的 details，只放"为什么收服务费"的解释 */
+        .service-charge-details {
+            margin-top: 10px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(245, 158, 11, 0.25);
+        }
+        .service-charge-details summary {
+            display: flex;
+            align-items: center;
+            min-height: 44px;
+            cursor: pointer;
+            color: #9EC2FF;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+        .service-charge-details summary:focus-visible {
+            outline: 2px solid #93C5FD;
+            outline-offset: 2px;
+            border-radius: 6px;
+        }
+        .service-charge-details p {
+            margin: 0 0 6px 0;
+            color: var(--text-muted);
+            font-size: 0.82rem;
+            line-height: 1.45;
         }
 
         /* Step 5 付款前强制确认区域 */
         .payment-policy-consent {
-            margin: 0 0 14px 0;
+            margin: 0 0 12px 0;
             padding: 14px 16px;
             border: 1px solid rgba(59, 130, 246, 0.35);
             border-radius: 10px;
@@ -483,44 +512,28 @@
             gap: 10px;
             cursor: pointer;
             color: var(--text-main);
-            font-size: 1rem;
+            font-size: 0.92rem;
+            line-height: 1.5;
             font-weight: 600;
         }
         .payment-policy-label input {
             margin-top: 3px;
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
             accent-color: var(--primary-blue);
             flex-shrink: 0;
             cursor: pointer;
         }
-        .payment-policy-consent ul {
-            list-style: none;
-            margin: 10px 0 0 0;
-            padding: 0;
+        .payment-policy-copy {
+            display: block;
         }
-        .payment-policy-consent ul li {
-            position: relative;
-            padding-left: 18px;
-            margin-bottom: 8px;
-            color: #c4dafd;
-            font-size: 0.9rem;
-            line-height: 1.5;
-        }
-        .payment-policy-consent ul li:last-child {
-            margin-bottom: 0;
-        }
-        .payment-policy-consent ul li::before {
-            content: '•';
-            position: absolute;
-            left: 2px;
-            top: 0;
-            color: var(--primary-blue);
-            font-weight: 700;
-        }
-        .payment-policy-consent ul li a {
+        .payment-policy-link {
+            display: inline-block;
+            margin: 7px 0 0 30px; /* 与确认句正文对齐：20px checkbox + 10px gap */
+            padding: 6px 0;
             color: #9ec2ff;
             text-decoration: underline;
+            font-size: 0.86rem;
         }
         .payment-policy-error {
             margin: 10px 0 0 0;
@@ -549,34 +562,6 @@
             color: var(--text-muted);
             font-size: 0.85rem;
             line-height: 1.45;
-        }
-
-        .service-charge-notice {
-            margin: 0 auto 16px auto;
-            padding: 14px 16px;
-            border: 1px solid rgba(59, 130, 246, 0.35);
-            border-left: 3px solid var(--primary-blue);
-            border-radius: 10px;
-            background: rgba(59, 130, 246, 0.08);
-            text-align: left;
-        }
-
-        .service-charge-notice h3 {
-            margin: 0 0 7px 0;
-            color: var(--text-main);
-            font-size: 0.98rem;
-        }
-
-        .service-charge-notice p {
-            margin: 0;
-            color: var(--text-muted);
-            font-size: 0.84rem;
-            line-height: 1.5;
-        }
-
-        .service-charge-notice .service-charge-thanks {
-            margin-top: 8px;
-            color: #c4dafd;
         }
 
         .service-detail {
@@ -654,6 +639,81 @@
             }
         }
 
+        /* 手机端：Step 5 付款区域紧凑布局（只调整付款披露与确认区域） */
+        @media (max-width: 600px) {
+            .payment-important-notice {
+                padding: 14px;
+                margin-bottom: 12px;
+                border-left-width: 3px;
+                border-radius: 11px;
+            }
+            .payment-important-notice h3 {
+                font-size: 1rem;
+                margin-bottom: 8px;
+            }
+            .payment-disclosure-list {
+                grid-template-columns: 1fr;
+                gap: 0;
+            }
+            .payment-disclosure-item {
+                padding: 10px 0;
+                background: none;
+                border: none;
+                border-radius: 0;
+            }
+            .payment-disclosure-item + .payment-disclosure-item {
+                border-top: 1px solid rgba(245, 158, 11, 0.18);
+            }
+            .payment-disclosure-item strong {
+                font-size: 0.9rem;
+            }
+            .payment-disclosure-item span {
+                font-size: 0.85rem;
+                line-height: 1.4;
+            }
+            .service-charge-details {
+                margin-top: 6px;
+            }
+            .service-charge-details summary {
+                min-height: 44px;
+            }
+            .payment-policy-consent {
+                padding: 13px 14px;
+                margin-bottom: 12px;
+            }
+            .payment-policy-label {
+                gap: 10px;
+                font-size: 0.875rem;
+                line-height: 1.45;
+            }
+            .payment-policy-label input {
+                width: 22px;
+                height: 22px;
+            }
+            .payment-policy-link {
+                display: inline-flex;
+                align-items: center;
+                min-height: 44px;
+                margin-left: 32px; /* 22px checkbox + 10px gap */
+            }
+            #step-5 .upsell-section {
+                margin-top: 12px !important;
+                padding: 14px;
+            }
+            #step-5 .upsell-title {
+                margin-bottom: 10px;
+            }
+            #pay-with-stripe-btn {
+                width: 100%;
+                min-height: 52px;
+            }
+            #step-5 > .actions {
+                margin-top: 20px;
+                flex-wrap: wrap;
+                gap: 10px;
+            }
+        }
+
         .modal-overlay {
             position: fixed;
             inset: 0;
@@ -695,6 +755,62 @@
         .modal-actions {
             display: flex;
             justify-content: flex-end;
+        }
+
+        /* Step 4 提交时的 availability loading 遮罩（不可背景关闭、不可 ESC 关闭） */
+        .availability-overlay {
+            position: fixed;
+            inset: 0;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.72);
+            z-index: 10000;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .availability-overlay.show {
+            display: flex;
+        }
+        .availability-box {
+            width: 100%;
+            max-width: 420px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 26px 22px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            text-align: left;
+        }
+        .availability-box h3 {
+            margin: 0 0 12px 0;
+            font-size: 1.15rem;
+            color: var(--text-main);
+        }
+        .availability-progress {
+            height: 10px;
+            background: rgba(156, 163, 175, 0.2);
+            border-radius: 999px;
+            overflow: hidden;
+            margin: 4px 0 16px 0;
+        }
+        .availability-progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary-blue), #60a5fa);
+            border-radius: 999px;
+            transition: width 0.15s linear;
+        }
+        .availability-status {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.55;
+            margin: 0;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .availability-progress-bar {
+                transition: none;
+            }
         }
 </style>
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
@@ -931,7 +1047,7 @@
 
         <div class="form-group">
             <label for="user-name">Full Name</label>
-            <input type="text" id="user-name" class="neon-input" placeholder="John Doe">
+            <input type="text" id="user-name" class="neon-input" placeholder="John Doe" oninput="regenerateBookingAttemptId()">
         </div>
 
         <div class="form-group">
@@ -977,31 +1093,33 @@
         </div>
 
         <aside class="payment-important-notice" aria-labelledby="payment-important-title">
-            <h3 id="payment-important-title">Important</h3>
-            <ul>
-                <li>Today’s payment covers your booking deposit only.</li>
-                <li>
-                    Any additional charges during your visit, including extra room time,
-                    food and beverage purchases, applicable HST, and the 18% Service
-                    Charge, will be calculated and settled at the venue.
-                </li>
-                <li>An 18% Service Charge applies to all room bookings and food &amp; beverage purchases.</li>
-                <li>
-                    Online booking deposits are non-refundable for customer
-                    cancellations and no-shows, except where a refund is required by
-                    applicable law.
-                </li>
-            </ul>
-        </aside>
+            <h3 id="payment-important-title">Before You Pay</h3>
 
-        <aside class="service-charge-notice" aria-labelledby="service-charge-title">
-            <h3 id="service-charge-title">18% Service Charge</h3>
-            <p><strong>An 18% Service Charge will be added to all room bookings and food &amp; beverage purchases.</strong> This fee helps cover ongoing service, room preparation, cleaning, and support staff to ensure every guest enjoys a safe, clean, and enjoyable karaoke experience.</p>
-            <p class="service-charge-thanks">Thank you for choosing 1383 Karaoke Bar.</p>
+            <div class="payment-disclosure-list">
+                <div class="payment-disclosure-item">
+                    <strong>Deposit only</strong>
+                    <span>Today’s online payment secures your booking and is not the final bill.</span>
+                </div>
+
+                <div class="payment-disclosure-item">
+                    <strong>Pay at the venue</strong>
+                    <span>Extra room time and food &amp; beverage are settled at the venue. An 18% Service Charge applies to all room and food &amp; beverage purchases, plus HST.</span>
+                </div>
+
+                <div class="payment-disclosure-item">
+                    <strong>Non-refundable</strong>
+                    <span>Online deposits are non-refundable for cancellations and no-shows, except where required by law.</span>
+                </div>
+            </div>
+
+            <details class="service-charge-details">
+                <summary>Why is there an 18% Service Charge?</summary>
+                <p>The Service Charge helps cover room preparation, cleaning, ongoing service, and support staff.</p>
+            </details>
         </aside>
 
         <div class="upsell-section" style="margin-top: 16px;">
-            <h3 class="upsell-title">Choose Payment Method</h3>
+            <h3 class="upsell-title">Confirm &amp; Pay</h3>
 
             <div class="payment-policy-consent" id="payment-policy-consent">
                 <label for="payment-policy-checkbox" class="payment-policy-label">
@@ -1011,27 +1129,17 @@
                         name="paymentPolicyAccepted"
                         onchange="handlePaymentPolicyCheckboxChange()"
                     >
-                    <span>I understand and agree that:</span>
+                    <span class="payment-policy-copy">
+                        I understand this is a non-refundable booking deposit for cancellations and no-shows, except where required by law, and that an 18% Service Charge applies to all room and food &amp; beverage purchases, plus HST. I agree to the Booking &amp; Payment Policy.
+                    </span>
                 </label>
 
-                <ul>
-                    <li>Today’s online payment is a booking deposit only.</li>
-                    <li>
-                        Online booking deposits are non-refundable for customer
-                        cancellations and no-shows, except where required by
-                        applicable law.
-                    </li>
-                    <li>An 18% Service Charge applies to all room bookings and food &amp; beverage purchases.</li>
-                    <li>HST is additional where applicable.</li>
-                    <li>
-                        I have read and agree to the
-                        <a href="legal.html#booking-payment-policy"
-                           target="_blank"
-                           rel="noopener noreferrer">
-                            Booking &amp; Payment Policy
-                        </a>.
-                    </li>
-                </ul>
+                <a class="payment-policy-link"
+                   href="legal.html#booking-payment-policy"
+                   target="_blank"
+                   rel="noopener noreferrer">
+                    Review Booking &amp; Payment Policy
+                </a>
 
                 <p id="payment-policy-error"
                    class="payment-policy-error"
@@ -1056,12 +1164,22 @@
 
 </div>
 
+<div class="availability-overlay" id="availability-modal" role="dialog" aria-modal="true" aria-labelledby="availability-modal-title" aria-describedby="availability-modal-status">
+    <div class="availability-box">
+        <h3 id="availability-modal-title">Securing Your Room</h3>
+        <div class="availability-progress" aria-hidden="true">
+            <div class="availability-progress-bar" id="availability-progress-bar"></div>
+        </div>
+        <p id="availability-modal-status" class="availability-status" aria-live="polite">We’re checking live availability before opening payment. Please keep this page open.</p>
+    </div>
+</div>
+
 <div class="modal-overlay" id="validation-modal" onclick="handleModalBackdropClick(event)">
     <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="validation-modal-title">
         <h3 id="validation-modal-title">Notice</h3>
         <p id="validation-modal-message">Please check your input and try again.</p>
         <div class="modal-actions">
-            <button class="next-btn" id="validation-modal-ok-btn" type="button" onclick="closeValidationModal()">OK</button>
+            <button class="next-btn" id="validation-modal-ok-btn" type="button" onclick="handleModalAction()">OK</button>
         </div>
     </div>
 </div>
@@ -1081,11 +1199,13 @@
         paymentQuote: null,
         paymentCancelToken: '',
         termsAccepted: false,
-        termsPolicyVersion: ''
+        termsPolicyVersion: '',
+        bookingAttemptId: ''
     };
 
     let currentDayBookings = [];
-    let modalCloseHandler = null;
+    let modalActionHandler = null;
+    let modalDismissHandler = null;
     let currentStepNumber = 1;
     let paymentRedirectInProgress = false;
     let paymentReleaseInProgress = false;
@@ -1109,6 +1229,10 @@
     let turnstileWidgetId = null;
     let turnstileRenderRetries = 0;
     let paymentActionInProgress = false;
+    let bookingSubmitInProgress = false;
+    let availabilityAnimationDone = false;
+    let availabilityAnimationStart = 0;
+    const AVAILABILITY_MIN_DISPLAY_MS = 2000;
 
     // 🌟 包厢人数上限配置
     const ROOM_MAX_PEOPLE = {
@@ -1147,6 +1271,20 @@
 
     function getBusinessTimeZone() {
         return String(securityConfig.businessTimeZone || 'America/New_York').trim() || 'America/New_York';
+    }
+
+    // bookingAttemptId：浏览器内存中的幂等键。任何影响 booking 内容的字段
+    // （room/date/time/duration/partySize/套餐/name/phone）变化时重新生成；
+    // 网络错误后的 Try Again 必须复用同一个 attemptId。
+    function generateBookingAttemptId() {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return crypto.randomUUID();
+        }
+        return `att-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    }
+
+    function regenerateBookingAttemptId() {
+        bookingData.bookingAttemptId = generateBookingAttemptId();
     }
 
     function getBusinessTodayYmd() {
@@ -1687,7 +1825,7 @@
                     {
                         title: 'Payment Confirmed',
                         buttonText: 'Back to Home',
-                        onClose: () => {
+                        action: () => {
                             window.location.href = 'homeindex.html';
                         }
                     }
@@ -1805,6 +1943,7 @@
             current.push(key);
         }
         bookingData.selectedPackages = current;
+        regenerateBookingAttemptId(); // 套餐变化 → 新 attemptId
         syncDrinkPackageSelectionUI();
         updateUpsellMentions();
     }
@@ -1822,6 +1961,7 @@
         if (idx >= 0) current.splice(idx, 1);
         else current.push(upgradeKey);
         bookingData.selectedPackages = current;
+        regenerateBookingAttemptId(); // 套餐变化 → 新 attemptId
         syncDrinkPackageSelectionUI();
         updateUpsellMentions();
     }
@@ -1949,6 +2089,7 @@
     function selectRoom(roomName, element) {
         bookingData.bookingType = 'standard';
         bookingData.room = roomName;
+        regenerateBookingAttemptId(); // room 变化 → 新 attemptId
         document.querySelectorAll('.room-card').forEach(el => el.classList.remove('selected'));
         element.classList.add('selected');
         document.getElementById('btn-next-1').disabled = false;
@@ -1978,6 +2119,7 @@
 
         if (newSize >= 1 && newSize <= maxLimit) {
             bookingData.partySize = newSize;
+            regenerateBookingAttemptId(); // partySize 变化 → 新 attemptId
             document.getElementById('party-size-display').innerText = newSize;
             updateCounterUI();
         }
@@ -2006,6 +2148,7 @@
         const nextBtn = document.getElementById('btn-next-3');
 
         if (!dateVal) return;
+        regenerateBookingAttemptId(); // date 变化 → 新 attemptId
 
         // 判断选中的日期是星期几
         const dayOfWeek = getDayOfWeekFromYmd(dateVal); // 0是周日，5是周五，6是周六
@@ -2092,6 +2235,7 @@
         bookingData.date = dateVal;
         bookingData.duration = durationVal;
         bookingData.time = null;
+        regenerateBookingAttemptId(); // date/duration 变化 → 新 attemptId
         nextBtn.disabled = true;
 
         timeArea.style.display = 'block';
@@ -2168,6 +2312,7 @@
                     document.querySelectorAll('.dynamic-time-btn').forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     bookingData.time = time24;
+                    regenerateBookingAttemptId(); // time 变化 → 新 attemptId
                     document.getElementById('btn-next-3').disabled = false;
                 };
             }
@@ -2239,14 +2384,20 @@
 
     function handlePhoneInput(event) {
         event.target.value = event.target.value.replace(/\D/g, '').slice(0, 10);
+        regenerateBookingAttemptId(); // phone 变化 → 新 attemptId
     }
 
     function isValidPhoneNumber(phone) {
         return /^\d{10}$/.test(phone);
     }
 
+    // ==========================================
+    // 通用确认弹窗：action（按钮显式操作）与 dismiss（关闭）严格分离
+    //   - action：只有用户点击弹窗按钮时执行（如 Try Again / Continue to Payment）
+    //   - onClose（dismiss）：backdrop 点击、程序关闭时执行，绝不触发业务操作
+    // ==========================================
     function openAppModal(message, options = {}) {
-        const { title = 'Notice', buttonText = 'OK', onClose = null } = options;
+        const { title = 'Notice', buttonText = 'OK', action = null, onClose = null } = options;
         const modal = document.getElementById('validation-modal');
         const titleNode = document.getElementById('validation-modal-title');
         const messageNode = document.getElementById('validation-modal-message');
@@ -2255,23 +2406,138 @@
         titleNode.textContent = title;
         messageNode.textContent = message;
         okBtn.textContent = buttonText;
-        modalCloseHandler = onClose;
+        modalActionHandler = action;
+        modalDismissHandler = onClose;
         modal.classList.add('show');
+    }
+
+    // 显式按钮点击：执行 action（如有），然后关闭；不执行 dismiss 回调
+    function handleModalAction() {
+        const callback = modalActionHandler;
+        modalActionHandler = null;
+        modalDismissHandler = null;
+        document.getElementById('validation-modal').classList.remove('show');
+        if (typeof callback === 'function') {
+            callback();
+        }
+    }
+
+    // 关闭（backdrop / 程序关闭）：只执行 dismiss 回调，绝不执行 action
+    function closeValidationModal() {
+        document.getElementById('validation-modal').classList.remove('show');
+        if (typeof modalDismissHandler === 'function') {
+            const callback = modalDismissHandler;
+            modalDismissHandler = null;
+            callback();
+        } else {
+            modalDismissHandler = null;
+        }
+        modalActionHandler = null;
+    }
+
+    // ==========================================
+    // Step 4 availability loading modal
+    // ==========================================
+    function openAvailabilityModal() {
+        const modal = document.getElementById('availability-modal');
+        const bar = document.getElementById('availability-progress-bar');
+        const titleNode = document.getElementById('availability-modal-title');
+        const statusNode = document.getElementById('availability-modal-status');
+
+        availabilityAnimationDone = false;
+        availabilityAnimationStart = Date.now();
+        if (titleNode) titleNode.textContent = 'Securing Your Room';
+        if (statusNode) {
+            statusNode.textContent = 'We’re checking live availability before opening payment. Please keep this page open.';
+        }
+        if (bar) bar.style.width = '0%';
+        startAvailabilityProgress();
+        if (modal) modal.classList.add('show');
+    }
+
+    function startAvailabilityProgress() {
+        const bar = document.getElementById('availability-progress-bar');
+        if (!bar) return;
+        const reducedMotion = window.matchMedia
+            && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (reducedMotion) {
+            // 无障碍模式：不做进度动画，直接停在 90% 等待服务器结果
+            bar.style.width = '90%';
+            return;
+        }
+        const startedAt = Date.now();
+        const phase1Ms = 1300; // 0% → 70%
+        const phase2Ms = 10000; // 70% → 90% 缓慢移动
+        const tick = () => {
+            if (availabilityAnimationDone) return;
+            const elapsed = Date.now() - startedAt;
+            let pct;
+            if (elapsed < phase1Ms) {
+                pct = 70 * (elapsed / phase1Ms);
+            } else {
+                pct = 70 + 20 * Math.min(1, (elapsed - phase1Ms) / phase2Ms);
+            }
+            bar.style.width = `${Math.min(pct, 90).toFixed(1)}%`;
+            requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }
+
+    function markAvailabilitySuccess() {
+        const bar = document.getElementById('availability-progress-bar');
+        const titleNode = document.getElementById('availability-modal-title');
+        const statusNode = document.getElementById('availability-modal-status');
+        availabilityAnimationDone = true;
+        if (bar) bar.style.width = '100%';
+        if (titleNode) titleNode.textContent = 'Room Held Successfully';
+        if (statusNode) statusNode.textContent = 'Your room is temporarily held. Please continue to payment.';
+    }
+
+    function closeAvailabilityModal() {
+        availabilityAnimationDone = true;
+        const modal = document.getElementById('availability-modal');
+        if (modal) modal.classList.remove('show');
+    }
+
+    // 等待最短展示时间（服务器响应快时由前端补足）
+    function waitForAvailabilityMinDisplay() {
+        const elapsed = Date.now() - availabilityAnimationStart;
+        const remaining = Math.max(0, AVAILABILITY_MIN_DISPLAY_MS - elapsed);
+        return new Promise((resolve) => setTimeout(resolve, remaining));
+    }
+
+    // 冲突后返回 Step 3：保留 room/partySize/date/duration/套餐/姓名/电话，
+    // 只清空 time 与旧 payment 状态，生成新 attemptId 并重新加载可用时间。
+    function handleConflictReturnToStep3() {
+        bookingData.time = null;
+        bookingData.bookingId = null;
+        bookingData.paymentStatus = 'unpaid';
+        bookingData.paymentQuote = null;
+        bookingData.paymentCancelToken = '';
+        clearPaymentHoldTimer();
+        clearPaymentPolicyConsent();
+        regenerateBookingAttemptId();
+        resetCaptchaChallenge(); // 新 attempt 需要新的 Turnstile challenge
+
+        const nextBtn = document.getElementById('btn-next-3');
+        if (nextBtn) nextBtn.disabled = true;
+
+        if (bookingData.date && bookingData.duration) {
+            fetchBookingsAndRenderTimes();
+        } else {
+            const timeArea = document.getElementById('time-selection-area');
+            if (timeArea) timeArea.style.display = 'none';
+        }
+        goToStep(3);
+    }
+
+    // 网络错误 / 内部错误后的 Try Again：复用同一个 bookingAttemptId
+    function retryBookingSubmission() {
+        performBookingSubmission();
     }
 
     function openValidationModal(message) {
         openAppModal(message, { title: 'Input Error', buttonText: 'OK' });
-    }
-
-    function closeValidationModal() {
-        document.getElementById('validation-modal').classList.remove('show');
-        if (typeof modalCloseHandler === 'function') {
-            const callback = modalCloseHandler;
-            modalCloseHandler = null;
-            callback();
-            return;
-        }
-        modalCloseHandler = null;
     }
 
     function handleModalBackdropClick(event) {
@@ -2284,6 +2550,7 @@
     // 提交订单逻辑
     // ==========================================
     async function submitBooking() {
+        if (bookingSubmitInProgress) return;
         bookingData.bookingType = 'standard';
         const nameInput = document.getElementById('user-name').value.trim();
         const phoneInput = document.getElementById('user-phone').value.trim();
@@ -2305,15 +2572,51 @@
 
         bookingData.name = nameInput;
         bookingData.phone = phoneInput;
+        if (!bookingData.bookingAttemptId) {
+            regenerateBookingAttemptId();
+        }
+
+        await performBookingSubmission();
+    }
+
+    // 实际提交（Try Again 复用同一 bookingAttemptId 调用本函数，防止
+    // 第一次已成功但响应丢失时重复创建 booking）
+    async function performBookingSubmission() {
+        if (bookingSubmitInProgress) return;
+
+        // CAPTCHA 防御检查：token 为空时绝不发起请求（例如 ATTEMPT_PAYLOAD_MISMATCH
+        // 重置 challenge 后用户尚未完成新验证）。guard 必须在提交进行中标记
+        // 置位之前，避免按钮被永久禁用。
+        if (securityConfig.captchaEnabled && !captchaToken) {
+            openAppModal(
+                'Please complete the security verification before submitting.',
+                {
+                    title: 'Verification Required',
+                    buttonText: 'Complete Verification',
+                    action: () => {
+                        const captchaSection = document.getElementById('captcha-section');
+                        if (captchaSection) {
+                            captchaSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }
+                }
+            );
+            return;
+        }
+
+        bookingSubmitInProgress = true;
 
         const confirmBtn = document.getElementById('confirm-booking-btn');
         if (confirmBtn) {
-            confirmBtn.innerText = "Processing...";
+            confirmBtn.innerText = 'Checking Availability...';
             confirmBtn.disabled = true;
         }
+        openAvailabilityModal();
 
+        let response = null;
+        let result = null;
         try {
-            const response = await fetch('/api/book', {
+            response = await fetch('/api/book', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -2321,29 +2624,44 @@
                     captchaToken
                 })
             });
-
-            const result = await response.json();
-
-            if (response.ok) {
-                bookingData.bookingId = result.bookingId;
-                bookingData.bookingType = result.bookingType || 'standard';
-                bookingData.paymentStatus = result.paymentStatus || 'unpaid';
-                bookingData.paymentCancelToken = result.paymentCancelToken || bookingData.paymentCancelToken || '';
-                if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {
-                    securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
+            result = await response.json().catch(() => ({}));
+        } catch (error) {
+            // 网络错误：服务器结果未知。保留同一 bookingAttemptId 与 payload，
+            // 不清空 captchaToken、不自动生成新 attemptId；只有 Try Again 按钮
+            // 才重试（重试依靠服务器 attempt 幂等与 Turnstile idempotency_key）。
+            console.error('网络请求错误 (Network Error):', error);
+            await waitForAvailabilityMinDisplay();
+            closeAvailabilityModal();
+            if (confirmBtn) {
+                confirmBtn.innerText = 'Confirm Booking';
+                confirmBtn.disabled = false;
+            }
+            bookingSubmitInProgress = false;
+            openAppModal(
+                'We couldn’t confirm live availability. No payment was started. Please try again.',
+                {
+                    title: 'Unable to Verify Availability',
+                    buttonText: 'Try Again',
+                    action: () => retryBookingSubmission()
                 }
-                // 新预订：清除上一笔预订的政策确认，要求重新勾选
-                clearPaymentPolicyConsent();
+            );
+            return;
+        }
+
+        if (response.ok) {
+            // 只有服务器返回成功 bookingId 才算成功，动画结束不作为成功依据
+            await waitForAvailabilityMinDisplay();
+            markAvailabilitySuccess();
+            setTimeout(() => {
+                closeAvailabilityModal();
                 if (confirmBtn) {
-                    confirmBtn.innerText = "Confirm Booking";
+                    confirmBtn.innerText = 'Confirm Booking';
                     confirmBtn.disabled = false;
                 }
-                if (result.paymentQuote) {
-                    renderPaymentQuote(result.paymentQuote);
-                } else {
-                    await refreshPaymentQuote();
-                }
-
+                bookingSubmitInProgress = false;
+                applyBookingSuccess(result);
+                // 恢复基线成功弹窗：Booking ID、已选套餐、继续支付订金提示、
+                // 未付款自动释放提示；只有用户点击 Continue to Payment 才进入 Step 5
                 const selectedPackageNames = getSelectedPackageNames();
                 const upsellFollowUp = selectedPackageNames.length
                     ? ` Selected drinking packages: ${selectedPackageNames.join(', ')}.`
@@ -2353,33 +2671,100 @@
                     {
                         title: 'Payment Required',
                         buttonText: 'Continue to Payment',
-                        onClose: () => {
+                        action: () => {
                             goToStep(5);
                         }
                     }
                 );
-            } else {
-                const serverMessage = result && result.error
-                    ? `We could not submit your booking: ${result.error}`
-                    : 'We could not submit your booking right now. Please try again in a moment.';
-                openAppModal(serverMessage, { title: 'Booking Not Submitted', buttonText: 'OK' });
-                resetCaptchaChallenge();
-                if (confirmBtn) {
-                    confirmBtn.innerText = "Confirm Booking";
-                    confirmBtn.disabled = false;
-                }
-            }
-        } catch (error) {
-            console.error('发生网络请求错误 (Network Error):', error);
+            }, 900);
+            return;
+        }
+
+        await waitForAvailabilityMinDisplay();
+        closeAvailabilityModal();
+        if (confirmBtn) {
+            confirmBtn.innerText = 'Confirm Booking';
+            confirmBtn.disabled = false;
+        }
+        bookingSubmitInProgress = false;
+
+        if (result && result.code === 'SLOT_TAKEN') {
             openAppModal(
-                'We cannot connect to the server right now. Please check your connection and try again.',
-                { title: 'Connection Issue', buttonText: 'OK' }
+                'This room is in high demand, and another guest secured the last available room moments before you. No payment was taken. Please choose another available time.',
+                {
+                    title: 'This Time Was Just Booked',
+                    buttonText: 'Choose Another Time',
+                    action: () => handleConflictReturnToStep3()
+                }
             );
+            return;
+        }
+        if (result && result.code === 'CAPTCHA_FAILED') {
+            // captcha 明确失败：重置 challenge、清空 token、生成新 attemptId
+            // （新 token 必须使用新的 Siteverify idempotency key）、引导用户重新完成
             resetCaptchaChallenge();
-            if (confirmBtn) {
-                confirmBtn.innerText = "Confirm Booking";
-                confirmBtn.disabled = false;
-            }
+            regenerateBookingAttemptId();
+            openAppModal(
+                'Security verification failed. Please complete the verification again before submitting.',
+                {
+                    title: 'Verification Required',
+                    buttonText: 'OK',
+                    action: () => {
+                        const captchaSection = document.getElementById('captcha-section');
+                        if (captchaSection) {
+                            captchaSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }
+                }
+            );
+            return;
+        }
+        if (result && result.code === 'ATTEMPT_PAYLOAD_MISMATCH') {
+            // payload 已变化：新 attemptId + 新 CAPTCHA challenge，不复用旧 token
+            regenerateBookingAttemptId();
+            resetCaptchaChallenge();
+            openAppModal(
+                'Your booking details changed during submission. Please complete the security verification again, then press Confirm Booking to submit.',
+                {
+                    title: 'Booking Not Submitted',
+                    buttonText: 'Complete Verification',
+                    action: () => {
+                        const captchaSection = document.getElementById('captcha-section');
+                        if (captchaSection) {
+                            captchaSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        }
+                    }
+                }
+            );
+            return;
+        }
+        // 其他服务端错误（500/503/…）：严格与真实库存冲突区分；
+        // 复用同一 bookingAttemptId，captchaToken 保留，只有 Try Again 触发重试
+        const serverMessage = result && result.error
+            ? `We could not submit your booking: ${result.error}`
+            : 'We could not submit your booking right now. Please try again in a moment.';
+        openAppModal(serverMessage, {
+            title: 'Booking Not Submitted',
+            buttonText: 'Try Again',
+            action: () => retryBookingSubmission()
+        });
+    }
+
+    // 成功响应处理（保持原有 booking 状态与支付报价逻辑）
+    function applyBookingSuccess(result) {
+        bookingData.bookingId = result.bookingId;
+        bookingData.bookingType = result.bookingType || 'standard';
+        bookingData.paymentStatus = result.paymentStatus || 'unpaid';
+        bookingData.paymentCancelToken = result.paymentCancelToken || bookingData.paymentCancelToken || '';
+        if (Number.isFinite(Number(result.paymentHoldMinutes)) && Number(result.paymentHoldMinutes) > 0) {
+            securityConfig.payment.pendingHoldMinutes = Number(result.paymentHoldMinutes);
+        }
+        // 新预订：清除上一笔预订的政策确认，要求重新勾选
+        clearPaymentPolicyConsent();
+        if (result.paymentQuote) {
+            renderPaymentQuote(result.paymentQuote);
+        } else {
+            refreshPaymentQuote();
         }
     }
 

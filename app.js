@@ -184,6 +184,37 @@ const STRIPE_WEBHOOK_CONFIG_ISSUES = [
 ].filter(Boolean);
 const stripeClient = STRIPE_ENABLED ? new Stripe(STRIPE_SECRET_KEY) : null;
 
+// ==========================================
+// 并发协调（纯内存，仅适用于单实例单 Node 进程部署）
+// ==========================================
+const {
+    BookingAdmissionCoordinator,
+    buildPayloadFingerprint,
+    isSlotAvailable,
+    normalizeRoomPool,
+    parseTimeToNumber,
+    toHalfOpenInterval,
+    ROOM_POOL_CAPACITY
+} = require('./lib/booking-admission');
+const {
+    CheckoutCoordinator,
+    FinalizeCoordinator,
+    verifyStripeSessionForBooking
+} = require('./lib/payment-coordinator');
+
+// 消费者在 Stripe 的可付款窗口（约 31 分钟，避开 Stripe 最短 expires_at 边界问题）
+const STRIPE_CHECKOUT_EXPIRES_SECONDS = 31 * 60;
+// 本地安全清理缓冲：必须始终大于 Stripe Session 有效期并留有 webhook/回跳缓冲
+const BOOKING_HOLD_SAFE_MINUTES = 45;
+// effective hold：env 配置低于安全下限时使用安全值（消费者文案按 Stripe 约 30 分钟表达，
+// 45 分钟只是内部安全清理缓冲，不得告知消费者有 45 分钟支付时间）
+const BOOKING_HOLD_EFFECTIVE_MINUTES = Math.max(PAYMENT_PENDING_HOLD_MINUTES, BOOKING_HOLD_SAFE_MINUTES);
+
+// 全局单进程 FIFO admission 协调器与付款协调器（内存态，进程重启即丢失）
+const bookingAdmission = new BookingAdmissionCoordinator();
+const checkoutCoordinator = new CheckoutCoordinator();
+const finalizeCoordinator = new FinalizeCoordinator();
+
 const ipLastRequestAt = new Map();
 const phoneRequestState = new Map();
 const THROTTLE_CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
@@ -451,7 +482,7 @@ function cleanupOldHistoricalOrders() {
 }
 
 function cleanupExpiredPendingPaymentBookings() {
-    const threshold = new Date(Date.now() - (PAYMENT_PENDING_HOLD_MINUTES * 60 * 1000));
+    const threshold = new Date(Date.now() - (BOOKING_HOLD_EFFECTIVE_MINUTES * 60 * 1000));
     const thresholdYmdHms = getBusinessDateTimeYmdHms(threshold);
     const sql = `DELETE FROM bookings
                  WHERE LOWER(COALESCE(payment_status, 'unpaid')) = 'unpaid'
@@ -540,6 +571,61 @@ function dbAll(sql, params = []) {
     });
 }
 
+// 只读库存查询 helper：与 /api/public/bookings 使用完全相同的 SQL 文本与语义，
+// 供 admission 关键区在服务器端做容量裁决（不新增、不修改任何 SQL）。
+const BOOKING_SLOTS_SQL = `SELECT room, partySize, date, time, duration FROM bookings`;
+
+function getAllBookingSlots() {
+    return dbAll(BOOKING_SLOTS_SQL, []);
+}
+
+// 服务器端库存裁决：把现有 bookings 行转成半开区间后，用 sweep-line 检查容量。
+// 只统计与目标 booking 同一库存池（small/medium/vip）的占用。
+function isBookingSlotAvailable({ room, date, time, duration, slotRows }) {
+    const proposedStart = parseTimeToNumber(time);
+    if (!Number.isFinite(proposedStart)) return false;
+    const proposed = {
+        date,
+        start: proposedStart,
+        end: proposedStart + Number(duration || 0)
+    };
+    const pool = normalizeRoomPool(room);
+    const capacity = ROOM_POOL_CAPACITY[pool];
+    const existing = (slotRows || [])
+        .filter((row) => normalizeRoomPool(row.room) === pool)
+        .map(toHalfOpenInterval)
+        .filter(Boolean);
+    return isSlotAvailable({ capacity, existing, proposed });
+}
+
+// booking 请求的确定性 fingerprint（覆盖所有影响 booking 内容的字段）
+function buildBookingRequestFingerprint(bookingData) {
+    return buildPayloadFingerprint([
+        bookingData.room,
+        bookingData.date,
+        bookingData.time,
+        bookingData.duration,
+        bookingData.partySize,
+        JSON.stringify(normalizeSelectedDrinkPackages(bookingData.packageSelectionJson)),
+        bookingData.name,
+        bookingData.phone
+    ]);
+}
+
+// 非阻塞高优先级管理员告警（仅在 Twilio 已配置时启用；失败静默，不影响主流程）。
+async function sendCriticalAdminAlert(message) {
+    if (!TWILIO_ENABLED) return { sent: false, reason: 'Twilio not configured.' };
+    const recipient = normalizePhoneOrEmpty(TWILIO_SUPPORT_PHONE);
+    if (!recipient) return { sent: false, reason: 'No support phone configured.' };
+    try {
+        const result = await sendTwilioSms(recipient, String(message || '').slice(0, 1200));
+        return { sent: true, sid: result.sid };
+    } catch (err) {
+        console.error('Critical admin alert SMS failed:', err.message);
+        return { sent: false, reason: err.message };
+    }
+}
+
 function getClientIp(req) {
     return String(req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown');
 }
@@ -581,6 +667,57 @@ function enforceIpBookingCooldown(req, res, next) {
 
     ipLastRequestAt.set(clientIp, now);
     next();
+}
+
+// attempt-aware IP 限流（/api/book 锁内使用）：只检查不记录。
+function getIpCooldownWaitMs(clientIp) {
+    const now = Date.now();
+    const lastAt = ipLastRequestAt.get(clientIp) || 0;
+    return BOOKING_IP_MIN_INTERVAL_MS - (now - lastAt);
+}
+
+// 只有真正 accepted 的新逻辑 booking 才记录 IP 最短间隔。
+function recordIpBookingAttempt(clientIp) {
+    ipLastRequestAt.set(clientIp, Date.now());
+}
+
+// attempt-aware 手机号限流（/api/book 锁内使用）：只检查不记录。
+function checkPhoneBookingLimit(normalizedPhone) {
+    const now = Date.now();
+    const prev = phoneRequestState.get(normalizedPhone) || { timestamps: [], lastSeenAt: 0 };
+    const recentTimestamps = prev.timestamps.filter((ts) => now - ts <= BOOKING_PHONE_WINDOW_MS);
+    const sinceLast = now - (prev.lastSeenAt || 0);
+
+    if (prev.lastSeenAt && sinceLast < BOOKING_PHONE_MIN_INTERVAL_MS) {
+        return {
+            ok: false,
+            statusCode: 429,
+            error: `This phone number requested too frequently. Please wait ${Math.ceil((BOOKING_PHONE_MIN_INTERVAL_MS - sinceLast) / 1000)} seconds and try again.`
+        };
+    }
+
+    if (recentTimestamps.length >= BOOKING_PHONE_MAX_REQUESTS) {
+        const waitMs = BOOKING_PHONE_WINDOW_MS - (now - recentTimestamps[0]);
+        return {
+            ok: false,
+            statusCode: 429,
+            error: `This phone number has reached the booking attempt limit. Please wait ${Math.ceil(waitMs / 1000)} seconds.`
+        };
+    }
+
+    return { ok: true };
+}
+
+// 只有真正 accepted 的新逻辑 booking 才记录手机号计数与最短间隔。
+function recordPhoneBookingAttempt(normalizedPhone) {
+    const now = Date.now();
+    const prev = phoneRequestState.get(normalizedPhone) || { timestamps: [], lastSeenAt: 0 };
+    const recentTimestamps = prev.timestamps.filter((ts) => now - ts <= BOOKING_PHONE_WINDOW_MS);
+    recentTimestamps.push(now);
+    phoneRequestState.set(normalizedPhone, {
+        timestamps: recentTimestamps,
+        lastSeenAt: now
+    });
 }
 
 function normalizeAndValidatePhoneNumber(rawPhone) {
@@ -707,7 +844,7 @@ function isPendingPaymentHoldExpired(booking) {
     if (String(booking.payment_method || '').trim() !== '') return false;
     const createdAt = String(booking.created_at || '').trim();
     if (!createdAt) return false;
-    const threshold = getBusinessDateTimeYmdHms(new Date(Date.now() - (PAYMENT_PENDING_HOLD_MINUTES * 60 * 1000)));
+    const threshold = getBusinessDateTimeYmdHms(new Date(Date.now() - (BOOKING_HOLD_EFFECTIVE_MINUTES * 60 * 1000)));
     return createdAt < threshold;
 }
 
@@ -1337,17 +1474,42 @@ function parseGoogleCalendarEvent(event) {
 }
 
 async function upsertGoogleCalendarBooking(parsedBooking) {
-    const existing = await dbGet(
-        `SELECT id FROM bookings WHERE payment_method = 'google-calendar' AND payment_reference = ? LIMIT 1`,
-        [parsedBooking.paymentReference]
-    );
+    // 与 web booking 的"读取库存 + INSERT"共享同一全局 admission 锁，
+    // 避免与 admission 关键区交叉（不修改任何现有 SQL 与业务逻辑）。
+    return bookingAdmission.runExclusive(async () => {
+        const existing = await dbGet(
+            `SELECT id FROM bookings WHERE payment_method = 'google-calendar' AND payment_reference = ? LIMIT 1`,
+            [parsedBooking.paymentReference]
+        );
 
-    if (existing) {
+        if (existing) {
+            await dbRun(
+                `UPDATE bookings
+                 SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?,
+                     deposit = ?, payment_status = ?, payment_amount_cents = ?, booking_type = 'standard'
+                 WHERE id = ?`,
+                [
+                    parsedBooking.room,
+                    parsedBooking.partySize,
+                    parsedBooking.date,
+                    parsedBooking.time,
+                    parsedBooking.duration,
+                    parsedBooking.name,
+                    parsedBooking.phone,
+                    parsedBooking.deposit,
+                    parsedBooking.paymentStatus,
+                    parsedBooking.paymentAmountCents,
+                    Number(existing.id)
+                ]
+            );
+            return { inserted: 0, updated: 1, reference: parsedBooking.paymentReference };
+        }
+
         await dbRun(
-            `UPDATE bookings
-             SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?,
-                 deposit = ?, payment_status = ?, payment_amount_cents = ?, booking_type = 'standard'
-             WHERE id = ?`,
+            `INSERT INTO bookings (
+                room, partySize, date, time, duration, name, phone, deposit, payment_status,
+                payment_method, payment_amount_cents, payment_reference, payment_cancel_token, booking_type, created_at
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'google-calendar', ?, ?, '', 'standard', ?)`,
             [
                 parsedBooking.room,
                 parsedBooking.partySize,
@@ -1359,34 +1521,13 @@ async function upsertGoogleCalendarBooking(parsedBooking) {
                 parsedBooking.deposit,
                 parsedBooking.paymentStatus,
                 parsedBooking.paymentAmountCents,
-                Number(existing.id)
+                parsedBooking.paymentReference,
+                getBusinessDateTimeYmdHms()
             ]
         );
-        return { inserted: 0, updated: 1, reference: parsedBooking.paymentReference };
-    }
 
-    await dbRun(
-        `INSERT INTO bookings (
-            room, partySize, date, time, duration, name, phone, deposit, payment_status,
-            payment_method, payment_amount_cents, payment_reference, payment_cancel_token, booking_type, created_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'google-calendar', ?, ?, '', 'standard', ?)`,
-        [
-            parsedBooking.room,
-            parsedBooking.partySize,
-            parsedBooking.date,
-            parsedBooking.time,
-            parsedBooking.duration,
-            parsedBooking.name,
-            parsedBooking.phone,
-            parsedBooking.deposit,
-            parsedBooking.paymentStatus,
-            parsedBooking.paymentAmountCents,
-            parsedBooking.paymentReference,
-            getBusinessDateTimeYmdHms()
-        ]
-    );
-
-    return { inserted: 1, updated: 0, reference: parsedBooking.paymentReference };
+        return { inserted: 1, updated: 0, reference: parsedBooking.paymentReference };
+    });
 }
 
 async function syncGoogleCalendarBookings(options = {}) {
@@ -1587,7 +1728,7 @@ async function triggerPaymentConfirmedMessageInGhl(booking) {
     return { sent: true, contactId };
 }
 
-async function verifyCaptchaToken(captchaToken, req) {
+async function verifyCaptchaToken(captchaToken, req, options = {}) {
     if (!CAPTCHA_ENABLED) {
         return { ok: true, skipped: true };
     }
@@ -1601,6 +1742,13 @@ async function verifyCaptchaToken(captchaToken, req) {
     form.set('secret', TURNSTILE_SECRET_KEY);
     form.set('response', token);
     form.set('remoteip', getClientIp(req));
+
+    // Cloudflare 官方支持的 idempotency_key：用稳定的 bookingAttemptId，
+    // 保证同一逻辑 attempt 的安全重试不会因重复 siteverify 而被误判。
+    const idempotencyKey = String(options && options.idempotencyKey ? options.idempotencyKey : '').trim();
+    if (idempotencyKey) {
+        form.set('idempotency_key', idempotencyKey);
+    }
 
     try {
         const response = await fetchWithTimeout('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
@@ -1894,7 +2042,7 @@ app.get('/api/public/security-config', (req, res) => {
         bookingPolicyHash: BOOKING_POLICY_HASH,
         payment: {
             currency: PAYMENT_CURRENCY,
-            pendingHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
+            pendingHoldMinutes: BOOKING_HOLD_EFFECTIVE_MINUTES,
             providers: {
                 stripe: {
                     enabled: STRIPE_ENABLED,
@@ -1951,7 +2099,7 @@ app.post('/api/book/private-event', bookingIpRateLimiter, enforceIpBookingCooldo
             normalizedPhone: placeholderPhone,
             paymentStatus: 'unpaid',
             paymentCancelToken: cancelToken,
-            paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
+            paymentHoldMinutes: BOOKING_HOLD_EFFECTIVE_MINUTES,
             bookingType: 'private_event',
             paymentQuote,
             paymentProviders: {
@@ -1965,24 +2113,16 @@ app.post('/api/book/private-event', bookingIpRateLimiter, enforceIpBookingCooldo
 });
 
 // 4.1 客户提交预订 API
-app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req, res) => {
+app.post('/api/book', bookingIpRateLimiter, async (req, res) => {
+    // 同步 payload 校验（不依赖任何异步网络）
     const validation = validateBookingRequest(req.body);
     if (!validation.ok) {
         return res.status(400).json({ error: validation.error || 'Invalid booking payload.' });
     }
 
-    const captchaResult = await verifyCaptchaToken(req.body?.captchaToken, req);
-    if (!captchaResult.ok) {
-        return res.status(400).json({ error: captchaResult.error || 'Captcha verification failed.' });
-    }
-
     const bookingData = validation.data;
-    const phoneLimitResult = enforcePhoneBookingLimit(bookingData.phone);
-    if (!phoneLimitResult.ok) {
-        return res.status(phoneLimitResult.statusCode || 429).json({ error: phoneLimitResult.error });
-    }
-
-    const cancelToken = generatePaymentCancelToken();
+    const attemptId = String(req.body?.bookingAttemptId || '').trim();
+    const fingerprint = buildBookingRequestFingerprint(bookingData);
     const sql = `INSERT INTO bookings (
                     room, partySize, date, time, duration, name, phone,
                     package_selection_json, package_total_cents,
@@ -1992,21 +2132,121 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'No', 'unpaid', '', 0, '', ?, 'standard', ?)`;
 
     try {
-        const runResult = await dbRun(sql, [
-            bookingData.room,
-            bookingData.partySize,
-            bookingData.date,
-            bookingData.time,
-            bookingData.duration,
-            bookingData.name,
-            bookingData.phone,
-            bookingData.packageSelectionJson,
-            bookingData.packageTotalCents,
-            cancelToken,
-            getBusinessDateTimeYmdHms()
-        ]);
-        const bookingId = runResult.lastID;
-        syncValidCustomer(bookingData.name, bookingData.phone);
+        // 完成同步 payload validation 后立即进入 FIFO 队列：
+        //  - attempt 幂等检查（缓存/pending）最先执行，命中时直接返回，
+        //    不重复验证 Turnstile、不消耗 IP/phone 计数、不重复 INSERT/GHL。
+        //  - Turnstile 服务器验证、attempt-aware IP/phone 检查、库存读取、
+        //    容量裁决、现有 INSERT 全部在 FIFO 关键区内按服务器到达顺序执行，
+        //    验证码响应速度不会反转 FIFO 顺序。
+        const admissionResult = await bookingAdmission.submit({
+            attemptId,
+            fingerprint,
+            fn: async () => {
+                // —— 关键区开始（顺序 = 服务器 FIFO 到达顺序）——
+
+                // 1. Turnstile 服务器验证（带官方 idempotency_key = bookingAttemptId，
+                //    支持同 attempt 安全重试）
+                const captchaResult = await verifyCaptchaToken(req.body?.captchaToken, req, {
+                    idempotencyKey: attemptId
+                });
+                if (!captchaResult.ok) {
+                    // 不缓存、不记录限流；客户端需重新完成 challenge
+                    return {
+                        admissionStatus: 'rejected',
+                        code: 'CAPTCHA_FAILED',
+                        statusCode: 400,
+                        message: captchaResult.error || 'Captcha verification failed.'
+                    };
+                }
+
+                // 2. attempt-aware IP 最短间隔（只检查）
+                const clientIp = getClientIp(req);
+                const ipWaitMs = getIpCooldownWaitMs(clientIp);
+                if (ipWaitMs > 0) {
+                    return {
+                        admissionStatus: 'rejected',
+                        code: 'RATE_LIMITED',
+                        statusCode: 429,
+                        message: `Too many requests from the same IP. Please wait ${Math.ceil(ipWaitMs / 1000)} seconds before trying again.`
+                    };
+                }
+
+                // 3. attempt-aware 手机号限制（只检查）
+                const phoneLimitResult = checkPhoneBookingLimit(bookingData.phone);
+                if (!phoneLimitResult.ok) {
+                    return {
+                        admissionStatus: 'rejected',
+                        code: 'RATE_LIMITED',
+                        statusCode: phoneLimitResult.statusCode || 429,
+                        message: phoneLimitResult.error
+                    };
+                }
+
+                // 4. 服务器端库存读取 + 容量裁决（sweep-line）
+                const slotRows = await getAllBookingSlots();
+                const slotAvailable = isBookingSlotAvailable({
+                    room: bookingData.room,
+                    date: bookingData.date,
+                    time: bookingData.time,
+                    duration: bookingData.duration,
+                    slotRows
+                });
+                if (!slotAvailable) {
+                    return { admissionStatus: 'conflict', code: 'SLOT_TAKEN', returnStep: 3 };
+                }
+
+                // 5. 现有 INSERT
+                const cancelToken = generatePaymentCancelToken();
+                const runResult = await dbRun(sql, [
+                    bookingData.room,
+                    bookingData.partySize,
+                    bookingData.date,
+                    bookingData.time,
+                    bookingData.duration,
+                    bookingData.name,
+                    bookingData.phone,
+                    bookingData.packageSelectionJson,
+                    bookingData.packageTotalCents,
+                    cancelToken,
+                    getBusinessDateTimeYmdHms()
+                ]);
+
+                // 只有真正 accepted 的新逻辑 booking 才记录 IP/phone 限制
+                recordIpBookingAttempt(clientIp);
+                recordPhoneBookingAttempt(bookingData.phone);
+
+                return { admissionStatus: 'accepted', bookingId: Number(runResult.lastID), cancelToken };
+                // —— 关键区结束 ——
+            }
+        });
+
+        if (admissionResult.admissionStatus === 'conflict') {
+            return res.status(409).json({
+                code: 'SLOT_TAKEN',
+                message: 'This time was just booked. Please choose another available time.',
+                returnStep: 3
+            });
+        }
+        if (admissionResult.admissionStatus === 'rejected') {
+            return res.status(admissionResult.statusCode || 400).json({
+                code: admissionResult.code || 'REJECTED',
+                error: admissionResult.message || 'Booking request was rejected.'
+            });
+        }
+        if (admissionResult.admissionStatus !== 'accepted') {
+            console.error('Unexpected admission result:', admissionResult);
+            return res.status(500).json({ error: 'Failed to save booking to database.' });
+        }
+
+        const bookingId = admissionResult.bookingId;
+        const cancelToken = admissionResult.cancelToken;
+        // —— 关键区之外：post-admission 副作用。只有本次调用真正执行了
+        //    INSERT（fromCache !== true）才执行；相同 attemptId 的缓存重试
+        //    不会重复 syncValidCustomer 或 GHL 通知。 ——
+        if (admissionResult.fromCache !== true) {
+            syncValidCustomer(bookingData.name, bookingData.phone);
+        }
+
         const paymentQuote = calculateBookingPaymentQuote({
             id: bookingId,
             room: bookingData.room,
@@ -2020,31 +2260,35 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
         });
 
         let notification = { sent: false, reason: '' };
-        try {
-            notification = await triggerBookingMessageInGhl({
-                bookingId,
-                room: bookingData.room,
-                partySize: bookingData.partySize,
-                date: bookingData.date,
-                time: bookingData.time,
-                duration: bookingData.duration,
-                name: bookingData.name,
-                phone: bookingData.phone,
-                upsellInterest: bookingData.upsellInterest
-            });
-        } catch (notifyErr) {
-            console.error('GHL integration failed:', notifyErr.message);
-            notification = { sent: false, reason: notifyErr.message };
+        if (admissionResult.fromCache !== true) {
+            try {
+                notification = await triggerBookingMessageInGhl({
+                    bookingId,
+                    room: bookingData.room,
+                    partySize: bookingData.partySize,
+                    date: bookingData.date,
+                    time: bookingData.time,
+                    duration: bookingData.duration,
+                    name: bookingData.name,
+                    phone: bookingData.phone,
+                    upsellInterest: bookingData.upsellInterest
+                });
+            } catch (notifyErr) {
+                // 通知失败不回滚 booking，只记录日志
+                console.error('GHL integration failed:', notifyErr.message);
+                notification = { sent: false, reason: notifyErr.message };
+            }
         }
 
         res.status(200).json({
             message: 'Booking successful!',
             bookingId,
+            admissionStatus: 'accepted',
             notification,
             normalizedPhone: bookingData.phone,
             paymentStatus: 'unpaid',
             paymentCancelToken: cancelToken,
-            paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
+            paymentHoldMinutes: BOOKING_HOLD_EFFECTIVE_MINUTES,
             bookingType: 'standard',
             paymentQuote,
             paymentProviders: {
@@ -2052,6 +2296,17 @@ app.post('/api/book', bookingIpRateLimiter, enforceIpBookingCooldown, async (req
             }
         });
     } catch (err) {
+        if (err && err.code === 'ATTEMPT_PAYLOAD_MISMATCH') {
+            return res.status(409).json({
+                code: 'ATTEMPT_PAYLOAD_MISMATCH',
+                message: 'This booking attempt was already submitted with different details. Please try again.',
+                returnStep: 3
+            });
+        }
+        if (err && (err.code === 'ADMISSION_OVERLOADED' || err.code === 'ADMISSION_TIMEOUT')) {
+            console.error('Booking admission failure:', err.message);
+            return res.status(503).json({ error: 'The booking system is busy. Please try again in a moment.' });
+        }
         console.error('Error inserting data:', err.message);
         return res.status(500).json({ error: 'Failed to save booking to database.' });
     }
@@ -2070,7 +2325,7 @@ app.get('/api/book/:id/payment-quote', async (req, res) => {
         }
         if (await releaseBookingIfPendingHoldExpired(booking)) {
             return res.status(410).json({
-                error: `Payment hold expired (${PAYMENT_PENDING_HOLD_MINUTES} minutes). Please submit a new booking.`
+                error: `Payment hold expired (${BOOKING_HOLD_EFFECTIVE_MINUTES} minutes). Please submit a new booking.`
             });
         }
 
@@ -2119,7 +2374,7 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         }
         if (await releaseBookingIfPendingHoldExpired(booking)) {
             return res.status(410).json({
-                error: `Payment hold expired (${PAYMENT_PENDING_HOLD_MINUTES} minutes). Please submit a new booking.`
+                error: `Payment hold expired (${BOOKING_HOLD_EFFECTIVE_MINUTES} minutes). Please submit a new booking.`
             });
         }
 
@@ -2149,55 +2404,167 @@ app.post('/api/book/:id/payment/start', async (req, res) => {
         if (!baseUrl) {
             return res.status(500).json({ error: 'Unable to resolve public URL for payment redirect.' });
         }
-        const issuedCancelToken = generatePaymentCancelToken();
-        await dbRun(`UPDATE bookings SET payment_cancel_token = ? WHERE id = ?`, [issuedCancelToken, booking.id]);
 
         if (!STRIPE_ENABLED || !stripeClient) {
             return res.status(400).json({ error: 'Stripe is not configured yet.' });
         }
 
-        // Server-generated acceptance time, only once Stripe is confirmed
-        // available. No local acceptance record is ever persisted.
-        const acceptedAt = new Date().toISOString();
+        // 按 bookingId 分组的 Checkout single-flight：
+        //  - 第一次 attempt 一次性冻结完整 Stripe request snapshot
+        //    （expires_at / success_url / cancel_url / cancelToken /
+        //      termsAcceptedAt / idempotencyKey），重试与并发等待者永远使用
+        //    同一份 snapshot，满足 Stripe 幂等参数完全一致的要求。
+        //  - 成功结果缓存；已过期的 Session 绝不返回旧 URL。
+        const checkoutFingerprint = buildPayloadFingerprint([
+            String(booking.id),
+            String(quote.currency || ''),
+            String(quote.totalCents),
+            String(quote.description || ''),
+            String(booking.room || ''),
+            String(booking.date || ''),
+            String(booking.time || ''),
+            String(booking.duration || ''),
+            BOOKING_POLICY_VERSION,
+            BOOKING_POLICY_HASH,
+            baseUrl
+        ]);
 
-        const session = await stripeClient.checkout.sessions.create({
-            mode: 'payment',
-            payment_method_types: ['card'],
-            client_reference_id: String(booking.id),
-            line_items: [
-                {
-                    quantity: 1,
-                    price_data: {
-                        currency: quote.currency.toLowerCase(),
-                        unit_amount: quote.totalCents,
-                        product_data: {
-                            name: quote.description
-                        }
-                    }
-                }
-            ],
-            metadata: {
-                bookingId: String(booking.id),
-                provider: 'stripe',
-                termsAccepted: 'true',
-                policyVersion: BOOKING_POLICY_VERSION,
-                policyHash: BOOKING_POLICY_HASH,
-                termsAcceptedAt: acceptedAt
+        const checkoutResult = await checkoutCoordinator.checkout({
+            bookingId: String(booking.id),
+            fingerprint: checkoutFingerprint,
+            // 首次 attempt 冻结的确定性 snapshot（只生成一次）
+            buildSnapshot: async () => {
+                const idempotencyKey = `checkout_${booking.id}_${crypto.randomBytes(8).toString('hex')}`;
+                const cancelToken = String(booking.payment_cancel_token || '').trim()
+                    || `ct_${crypto.randomBytes(12).toString('hex')}`;
+                const termsAcceptedAt = new Date().toISOString();
+                return {
+                    bookingId: String(booking.id),
+                    totalCents: quote.totalCents,
+                    currency: String(quote.currency || 'CAD'),
+                    description: quote.description,
+                    room: String(booking.room || ''),
+                    date: String(booking.date || ''),
+                    time: String(booking.time || ''),
+                    duration: String(booking.duration || ''),
+                    policyVersion: BOOKING_POLICY_VERSION,
+                    policyHash: BOOKING_POLICY_HASH,
+                    termsAcceptedAt,
+                    cancelToken,
+                    idempotencyKey,
+                    // 消费者可付款窗口约 31 分钟（只生成一次，重试不重算）；
+                    // 本地 hold（≥45 分钟）始终大于此窗口
+                    stripeExpiresAtEpoch: Math.floor(Date.now() / 1000) + STRIPE_CHECKOUT_EXPIRES_SECONDS,
+                    successUrl: `${baseUrl}/pages/booking.html?payment=success&provider=stripe&bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
+                    cancelUrl: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}&cancelToken=${encodeURIComponent(cancelToken)}`
+                };
             },
-            success_url: `${baseUrl}/pages/booking.html?payment=success&provider=stripe&bookingId=${booking.id}&session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${baseUrl}/pages/booking.html?payment=cancel&provider=stripe&bookingId=${booking.id}&cancelToken=${encodeURIComponent(issuedCancelToken)}`
+            createSession: async (snapshot) => {
+                // 每次进入（首次与重试）都重新确认 booking 当前状态
+                const latest = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
+                if (!latest) {
+                    return { ok: false, statusCode: 404, error: 'Booking not found.' };
+                }
+                if (normalizePaymentStatus(latest.payment_status) === 'paid') {
+                    return { ok: true, alreadyPaid: true, paymentStatus: 'paid' };
+                }
+                if (await releaseBookingIfPendingHoldExpired(latest)) {
+                    return {
+                        ok: false,
+                        statusCode: 410,
+                        error: `Payment hold expired (${BOOKING_HOLD_EFFECTIVE_MINUTES} minutes). Please submit a new booking.`
+                    };
+                }
+
+                // cancel token 必须稳定：只写回同一个 token，不在每次重试时旋转
+                if (snapshot.cancelToken !== String(latest.payment_cancel_token || '').trim()) {
+                    await dbRun(`UPDATE bookings SET payment_cancel_token = ? WHERE id = ?`, [snapshot.cancelToken, latest.id]);
+                }
+
+                const session = await stripeClient.checkout.sessions.create({
+                    mode: 'payment',
+                    payment_method_types: ['card'],
+                    client_reference_id: snapshot.bookingId,
+                    line_items: [
+                        {
+                            quantity: 1,
+                            price_data: {
+                                currency: snapshot.currency.toLowerCase(),
+                                unit_amount: snapshot.totalCents,
+                                product_data: {
+                                    name: snapshot.description
+                                }
+                            }
+                        }
+                    ],
+                    metadata: {
+                        bookingId: snapshot.bookingId,
+                        provider: 'stripe',
+                        room: snapshot.room,
+                        date: snapshot.date,
+                        time: snapshot.time,
+                        duration: snapshot.duration,
+                        amount: String(snapshot.totalCents),
+                        currency: snapshot.currency,
+                        policyVersion: snapshot.policyVersion,
+                        policyHash: snapshot.policyHash,
+                        termsAccepted: 'true',
+                        termsAcceptedAt: snapshot.termsAcceptedAt
+                    },
+                    expires_at: snapshot.stripeExpiresAtEpoch,
+                    success_url: snapshot.successUrl,
+                    cancel_url: snapshot.cancelUrl
+                }, { idempotencyKey: snapshot.idempotencyKey });
+
+                return {
+                    ok: true,
+                    checkoutUrl: session.url,
+                    sessionId: session.id,
+                    cancelToken: snapshot.cancelToken,
+                    paymentHoldMinutes: BOOKING_HOLD_EFFECTIVE_MINUTES,
+                    bookingType: String(latest.booking_type || 'standard'),
+                    paymentQuote: quote
+                };
+            }
         });
+
+        if (checkoutResult.ok === false) {
+            return res.status(checkoutResult.statusCode || 500).json({
+                error: checkoutResult.error || 'Failed to start payment.'
+            });
+        }
+        if (checkoutResult.alreadyPaid) {
+            return res.status(200).json({
+                message: 'Booking is already paid.',
+                paymentStatus: 'paid'
+            });
+        }
 
         return res.status(200).json({
             provider: 'stripe',
-            checkoutUrl: session.url,
-            sessionId: session.id,
-            cancelToken: issuedCancelToken,
-            paymentHoldMinutes: PAYMENT_PENDING_HOLD_MINUTES,
-            bookingType: String(booking.booking_type || 'standard'),
-            paymentQuote: quote
+            checkoutUrl: checkoutResult.checkoutUrl,
+            sessionId: checkoutResult.sessionId,
+            cancelToken: checkoutResult.cancelToken,
+            paymentHoldMinutes: checkoutResult.paymentHoldMinutes || BOOKING_HOLD_EFFECTIVE_MINUTES,
+            bookingType: checkoutResult.bookingType || String(booking.booking_type || 'standard'),
+            paymentQuote: checkoutResult.paymentQuote || quote
         });
     } catch (err) {
+        if (err && err.code === 'CHECKOUT_PAYLOAD_MISMATCH') {
+            return res.status(409).json({ error: 'Payment details changed for this booking. Please refresh and try again.' });
+        }
+        if (err && err.code === 'PAYMENT_SESSION_EXPIRED') {
+            return res.status(410).json({
+                code: 'PAYMENT_SESSION_EXPIRED',
+                error: 'The payment session has expired. Please release this booking and start a new one.'
+            });
+        }
+        if (err && err.code === 'CHECKOUT_CAPACITY_EXCEEDED') {
+            return res.status(503).json({
+                code: 'CHECKOUT_CAPACITY_EXCEEDED',
+                error: 'The payment system is busy. Please wait a moment and try again.'
+            });
+        }
         console.error('Failed to start payment:', err.message);
         return res.status(500).json({ error: 'Failed to start payment.' });
     }
@@ -2267,22 +2634,6 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
         if (provider !== 'stripe') {
             return res.status(400).json({ error: 'Unsupported payment provider. Only Stripe is available.' });
         }
-
-        const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
-        if (!booking) {
-            return res.status(404).json({ error: 'Booking not found.' });
-        }
-        if (normalizePaymentStatus(booking.payment_status) === 'paid') {
-            return res.status(200).json({
-                message: 'Payment already confirmed.',
-                bookingId: booking.id,
-                paymentStatus: 'paid',
-                bookingType: String(booking.booking_type || 'standard')
-            });
-        }
-
-        const quote = calculateBookingPaymentQuote(booking);
-
         if (!STRIPE_ENABLED || !stripeClient) {
             return res.status(400).json({ error: 'Stripe is not configured yet.' });
         }
@@ -2291,26 +2642,69 @@ app.post('/api/book/:id/payment/confirm', async (req, res) => {
             return res.status(400).json({ error: 'Missing Stripe session id.' });
         }
 
-        const session = await stripeClient.checkout.sessions.retrieve(sessionId);
-        const finalizeResult = await finalizeStripePaymentForBooking({
-            booking,
-            session,
-            fallbackTotalCents: quote.totalCents,
-            source: 'confirm-route',
-            baseUrl: getPublicBaseUrl(req)
-        });
-        if (!finalizeResult.ok) {
-            return res.status(finalizeResult.statusCode || 400).json({ error: finalizeResult.error || 'Failed to confirm payment.' });
-        }
+        // 与 webhook 共用按 bookingId 分组的 finalization coordinator：
+        // 并发到达时通过 bookingId mutex 串行，等待者执行自己的 fn 并重新读取
+        // booking；terminal: true 表示明确终态（可被同 eventId 去重）。
+        const outcome = await finalizeCoordinator.finalize({
+            bookingId: String(bookingId),
+            fn: async () => {
+                const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
+                if (!booking) {
+                    return { terminal: true, statusCode: 404, error: 'Booking not found.' };
+                }
+                if (normalizePaymentStatus(booking.payment_status) === 'paid') {
+                    return {
+                        terminal: true,
+                        statusCode: 200,
+                        alreadyPaid: true,
+                        message: 'Payment already confirmed.',
+                        bookingId: booking.id,
+                        paymentStatus: 'paid',
+                        bookingType: String(booking.booking_type || 'standard')
+                    };
+                }
 
-        return res.status(200).json({
-            message: 'Payment confirmed successfully.',
-            bookingId: booking.id,
-            paymentStatus: 'paid',
-            bookingType: String(booking.booking_type || 'standard'),
-            paymentNotification: finalizeResult.paymentNotification || { sent: false, reason: '' },
-            twilioNotification: finalizeResult.twilioNotification || { sent: false, reason: '', recipients: [], deliveries: [], failures: [] }
+                const quote = calculateBookingPaymentQuote(booking);
+                const session = await stripeClient.checkout.sessions.retrieve(sessionId);
+                const verification = verifyStripeSessionForBooking({ session, booking, quote });
+                if (!verification.ok) {
+                    console.error(
+                        `[PAYMENT-SECURITY] Confirm rejected for booking #${bookingId}: ${verification.reason} (session=${sessionId})`
+                    );
+                    return { terminal: true, statusCode: 400, error: verification.error || 'Failed to confirm payment.' };
+                }
+
+                const finalizeResult = await finalizeStripePaymentForBooking({
+                    booking,
+                    session,
+                    fallbackTotalCents: quote.totalCents,
+                    source: 'confirm-route',
+                    baseUrl: getPublicBaseUrl(req)
+                });
+                if (!finalizeResult.ok) {
+                    return { terminal: true, statusCode: finalizeResult.statusCode || 400, error: finalizeResult.error || 'Failed to confirm payment.' };
+                }
+
+                return {
+                    terminal: true,
+                    statusCode: 200,
+                    message: 'Payment confirmed successfully.',
+                    bookingId: booking.id,
+                    paymentStatus: 'paid',
+                    bookingType: String(booking.booking_type || 'standard'),
+                    paymentNotification: finalizeResult.paymentNotification || { sent: false, reason: '' },
+                    twilioNotification: finalizeResult.twilioNotification || { sent: false, reason: '', recipients: [], deliveries: [], failures: [] }
+                };
+            }
         });
+
+        if (outcome && outcome.ignored) {
+            return res.status(200).json({ received: true, ignored: true });
+        }
+        if (!outcome || !Number.isFinite(outcome.statusCode)) {
+            return res.status(500).json({ error: 'Failed to confirm payment.' });
+        }
+        return res.status(outcome.statusCode).json(outcome);
     } catch (err) {
         console.error('Failed to confirm payment:', err.message);
         return res.status(500).json({ error: 'Failed to confirm payment.' });
@@ -2352,31 +2746,77 @@ app.post('/api/stripe/webhook', async (req, res) => {
             return res.status(200).json({ received: true, ignored: true, reason: 'missing-booking-id' });
         }
 
-        const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
-        if (!booking) {
-            console.warn(`Stripe webhook received for missing booking #${bookingId}, session=${session?.id || 'unknown'}`);
-            return res.status(200).json({ received: true, ignored: true, reason: 'booking-not-found' });
-        }
+        // 非敏感恢复线索（仅来自 Stripe metadata，不含姓名/电话/卡数据）
+        const slotHint = [
+            session?.metadata?.room,
+            session?.metadata?.date,
+            session?.metadata?.time,
+            session?.metadata?.duration
+        ].filter(Boolean).join(' ');
 
-        const quote = calculateBookingPaymentQuote(booking);
-        const finalizeResult = await finalizeStripePaymentForBooking({
-            booking,
-            session,
-            fallbackTotalCents: quote.totalCents,
-            source: `webhook:${eventType}`,
-            baseUrl: getPublicBaseUrl(req)
-        });
-        if (!finalizeResult.ok) {
-            console.warn(`Stripe webhook finalize skipped for booking #${bookingId}: ${finalizeResult.error}`);
-            return res.status(200).json({ received: true, ignored: true, reason: finalizeResult.error || 'finalize-failed' });
-        }
+        // 与 confirm 共用按 bookingId 分组的 finalization coordinator；
+        // eventId 在 TTL 内去重，避免同一事件重复处理。
+        const outcome = await finalizeCoordinator.finalize({
+            bookingId: String(bookingId),
+            eventId: String(event?.id || ''),
+            fn: async () => {
+                // 关键区内重新读取 booking 当前状态（现有 SELECT 文本）
+                const booking = await dbGet(`SELECT * FROM bookings WHERE id = ?`, [bookingId]);
+                if (!booking) {
+                    // Stripe 已收款但本地 booking 不存在：高优先级 CRITICAL 报警，人工核对
+                    console.error(
+                        `CRITICAL: Stripe payment succeeded but booking is missing. ` +
+                        `eventType=${eventType} eventId=${event?.id || 'unknown'} ` +
+                        `sessionId=${session?.id || 'unknown'} bookingId=${bookingId} ` +
+                        `amount=${session?.amount_total ?? 'unknown'} currency=${session?.currency ?? 'unknown'} ` +
+                        `slot=${slotHint || 'unknown'}`
+                    );
+                    sendCriticalAdminAlert(
+                        `[CRITICAL] 1383KTV: Stripe payment succeeded but booking #${bookingId} not found ` +
+                        `(event ${event?.id || '?'}, session ${session?.id || '?'}, amount ${session?.amount_total ?? '?'} ${session?.currency ?? ''}). ` +
+                        `Please verify in the Stripe Dashboard and handle manually if needed.`
+                    ).catch(() => {});
+                    // CRITICAL 已触发并明确作为终态结束
+                    return { terminal: true, statusCode: 200, received: true, ignored: true, reason: 'booking-not-found' };
+                }
 
-        return res.status(200).json({
-            received: true,
-            processed: true,
-            bookingId,
-            alreadyPaid: Boolean(finalizeResult.alreadyPaid)
+                const quote = calculateBookingPaymentQuote(booking);
+                const verification = verifyStripeSessionForBooking({ session, booking, quote });
+                if (!verification.ok) {
+                    console.error(
+                        `[PAYMENT-SECURITY] Webhook rejected for booking #${bookingId}: ${verification.reason} ` +
+                        `(event=${event?.id || 'unknown'}, session=${session?.id || 'unknown'})`
+                    );
+                    return { terminal: true, statusCode: 200, received: true, ignored: true, reason: verification.reason || 'verification-failed' };
+                }
+
+                const finalizeResult = await finalizeStripePaymentForBooking({
+                    booking,
+                    session,
+                    fallbackTotalCents: quote.totalCents,
+                    source: `webhook:${eventType}`,
+                    baseUrl: getPublicBaseUrl(req)
+                });
+                if (!finalizeResult.ok) {
+                    console.warn(`Stripe webhook finalize skipped for booking #${bookingId}: ${finalizeResult.error}`);
+                    return { terminal: true, statusCode: 200, received: true, ignored: true, reason: finalizeResult.error || 'finalize-failed' };
+                }
+
+                return {
+                    terminal: true,
+                    statusCode: 200,
+                    received: true,
+                    processed: true,
+                    bookingId,
+                    alreadyPaid: Boolean(finalizeResult.alreadyPaid)
+                };
+            }
         });
+
+        if (outcome && outcome.ignored) {
+            return res.status(200).json({ received: true, ignored: true, reason: outcome.reason || 'duplicate-event' });
+        }
+        return res.status(outcome.statusCode || 200).json(outcome);
     } catch (err) {
         console.error('Stripe webhook processing failed:', err.message);
         return res.status(500).send('Webhook handler failed.');
@@ -2684,7 +3124,8 @@ app.post('/api/admin/bookings/manual', checkAdminLogin, async (req, res) => {
                         payment_status, payment_method, payment_amount_cents, payment_reference, created_at
                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-        const runResult = await dbRun(sql, [
+        // 与 web booking 的"读取库存 + INSERT"共享同一全局 admission 锁
+        const runResult = await bookingAdmission.runExclusive(async () => dbRun(sql, [
             room,
             partySize,
             date,
@@ -2698,7 +3139,7 @@ app.post('/api/admin/bookings/manual', checkAdminLogin, async (req, res) => {
             amountCents,
             '',
             getBusinessDateTimeYmdHms()
-        ]);
+        ]));
 
         if (paymentStatus === 'paid') {
             syncValidCustomer(name, safePhone);
@@ -2786,10 +3227,10 @@ app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
     const phoneValidation = normalizeAndValidatePhoneNumber(phone);
     const normalizedPhone = phoneValidation.ok ? phoneValidation.e164 : String(phone || '').trim();
 
-    // 先查询旧的 deposit 状态，用于判断是否需要回滚
-    db.get(`SELECT deposit FROM bookings WHERE id = ?`, [bookingId], (err, oldRow) => {
-        if (err) return res.status(500).json({ error: 'Failed to fetch old booking data.' });
-
+    // 与 web booking 的"读取库存 + INSERT"共享同一全局 admission 锁，
+    // 避免与 admission 关键区交叉（不修改任何现有 SQL 与业务逻辑）。
+    bookingAdmission.runExclusive(async () => {
+        const oldRow = await dbGet(`SELECT deposit FROM bookings WHERE id = ?`, [bookingId]);
         const oldDeposit = oldRow ? normalizeDepositValue(oldRow.deposit) : 'No';
         const isDepositRevertedFromYesToNo = oldDeposit === 'Yes' && normalizedDeposit === 'No';
 
@@ -2797,29 +3238,30 @@ app.put('/api/admin/bookings/:id', checkAdminLogin, (req, res) => {
                      SET room = ?, partySize = ?, date = ?, time = ?, duration = ?, name = ?, phone = ?, deposit = ?, payment_status = ?, payment_amount_cents = ? 
                      WHERE id = ?`;
 
-        db.run(sql, [room, partySize, date, time, duration, name, normalizedPhone, normalizedDeposit, normalizedPaymentStatus, amountCents, bookingId], function(err) {
-            if (err) return res.status(500).json({ error: 'Failed to update booking.' });
+        await dbRun(sql, [room, partySize, date, time, duration, name, normalizedPhone, normalizedDeposit, normalizedPaymentStatus, amountCents, bookingId]);
 
-            if (isDepositRevertedFromYesToNo) {
-                removeHistoricalOrder(Number(bookingId));
-                removeValidCustomer(name, normalizedPhone);
-            } else if (normalizedDeposit === 'Yes') {
-                syncHistoricalOrder({
-                    booking_id: Number(bookingId),
-                    room,
-                    partySize,
-                    date,
-                    time,
-                    duration,
-                    name,
-                    phone: normalizedPhone,
-                    deposit: normalizedDeposit
-                });
-                syncValidCustomer(name, normalizedPhone);
-            }
+        if (isDepositRevertedFromYesToNo) {
+            removeHistoricalOrder(Number(bookingId));
+            removeValidCustomer(name, normalizedPhone);
+        } else if (normalizedDeposit === 'Yes') {
+            syncHistoricalOrder({
+                booking_id: Number(bookingId),
+                room,
+                partySize,
+                date,
+                time,
+                duration,
+                name,
+                phone: normalizedPhone,
+                deposit: normalizedDeposit
+            });
+            syncValidCustomer(name, normalizedPhone);
+        }
 
-            res.json({ message: 'Booking updated successfully.' });
-        });
+        res.json({ message: 'Booking updated successfully.' });
+    }).catch((err) => {
+        console.error('Failed to update admin booking:', err && err.message);
+        res.status(500).json({ error: 'Failed to update booking.' });
     });
 });
 

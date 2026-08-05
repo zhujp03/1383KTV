@@ -4,7 +4,7 @@
   "description": "",
   "main": "app.js",
   "scripts": {
-    "test": "node --test tests/booking-policy-static.test.js"
+    "test": "node --test tests/booking-policy-static.test.js tests/booking-concurrency.test.js tests/payment-concurrency.test.js"
   },
   "private": true,
   "dependencies": {
